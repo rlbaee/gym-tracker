@@ -7,6 +7,7 @@ import {
   Dumbbell,
   History,
   LogOut,
+  Music,
   Plus,
   Search,
   Sparkles,
@@ -17,7 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.3.0";
+const APP_VERSION = "0.3.1";
 
 type Exercise = { id: string; name: string; muscle: string; equipment: string };
 type SetRow = { weight: string; reps: string; done: boolean };
@@ -893,17 +894,19 @@ export default function Home() {
               <div className="mb-8 grid gap-4 sm:grid-cols-3">
                 {[
                   [
-                    "Avg. workouts / week",
-                    averageWorkoutsPerWeek.toFixed(1),
+                    "Workouts",
+                    String(workouts.length),
                     "workouts",
+                    `Avg. ${averageWorkoutsPerWeek.toFixed(1)} / week`,
                   ],
                   [
-                    "Avg. volume / week",
-                    `${(averageVolumePerWeek / 1000).toFixed(1)}k`,
+                    "Volume",
+                    formatNumber(totalVolume),
                     "kg lifted",
+                    `Avg. ${formatNumber(averageVolumePerWeek)} kg / week`,
                   ],
-                  ["Weekly streak", String(currentStreak), "weeks"],
-                ].map(([label, value, suffix], index) => (
+                  ["Weekly streak", String(currentStreak), "weeks", "Consecutive weeks"],
+                ].map(([label, value, suffix, secondary], index) => (
                   <div
                     key={label}
                     className={`rounded-2xl border border-[var(--line)] p-5 ${index === 1 ? "bg-[var(--ink)] text-white" : "bg-white"}`}
@@ -930,8 +933,40 @@ export default function Home() {
                         {suffix}
                       </span>
                     </p>
+                    <p
+                      className={`mt-2 text-xs ${index === 1 ? "text-[#b1c9b7]" : "text-[var(--muted)]"}`}
+                    >
+                      {secondary}
+                    </p>
                   </div>
                 ))}
+              </div>
+              <div className="mb-8 flex flex-col gap-4 rounded-2xl border border-[var(--line)] bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eef7ef] text-[#56856a]">
+                    <Music size={18} />
+                  </div>
+                  <div>
+                    <p className="font-semibold">Workout music</p>
+                    <p className="mt-1 text-sm text-[var(--muted)]">
+                      Open your favorite training playlist.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => openMusic("spotify")}
+                    className="rounded-lg bg-[#e4f5e8] px-3 py-2 text-xs font-semibold text-[#287542] hover:bg-[#d4eedb]"
+                  >
+                    Spotify
+                  </button>
+                  <button
+                    onClick={() => openMusic("apple")}
+                    className="rounded-lg bg-[#f5e5ed] px-3 py-2 text-xs font-semibold text-[#9a3f6a] hover:bg-[#eed7e3]"
+                  >
+                    Apple Music
+                  </button>
+                </div>
               </div>
               <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
                 <div className="rounded-2xl border border-[var(--line)] bg-white p-5 sm:p-6">

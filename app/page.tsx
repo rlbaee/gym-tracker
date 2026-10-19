@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.3.4";
+const APP_VERSION = "0.3.5";
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -593,6 +593,22 @@ export default function Home() {
         return { ...item, [field]: String(nextValue || "") };
       }),
     }));
+  }
+
+  function getPreviousExerciseSet(exerciseId: string) {
+    const previousWorkout = workouts.find((workout) =>
+      workout.loggedExercises.some((logged) => logged.exerciseId === exerciseId),
+    );
+    const previousExercise = previousWorkout?.loggedExercises.find(
+      (logged) => logged.exerciseId === exerciseId,
+    );
+    if (!previousExercise?.sets.length) return null;
+    return previousExercise.sets.reduce((best, set) =>
+      set.weight > best.weight ||
+      (set.weight === best.weight && set.reps > best.reps)
+        ? set
+        : best,
+    );
   }
 
   async function saveRoutine() {
@@ -1493,6 +1509,16 @@ export default function Home() {
                       <p className="mt-1 text-xs text-[var(--muted)]">
                         {exercise.muscle} · {exercise.equipment}
                       </p>
+                      {(() => {
+                        const previousSet = getPreviousExerciseSet(exercise.id);
+                        return (
+                          <p className="mt-2 text-xs text-[var(--muted)]">
+                            {previousSet
+                              ? `Last time: ${previousSet.weight} kg × ${previousSet.reps}`
+                              : "No previous entry yet"}
+                          </p>
+                        );
+                      })()}
                     </div>
                     <div className="flex items-center gap-2">
                       <Timer size={17} className="text-[#75a889]" />

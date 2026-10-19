@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.3.1";
+const APP_VERSION = "0.3.2";
 
 type Exercise = { id: string; name: string; muscle: string; equipment: string };
 type SetRow = { weight: string; reps: string; done: boolean };
@@ -165,6 +165,7 @@ export default function Home() {
   const [sessionUser, setSessionUser] = useState<{
     id: string;
     email?: string;
+    createdAt?: string;
   } | null>(null);
   const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
   const [authEmail, setAuthEmail] = useState("");
@@ -184,6 +185,7 @@ export default function Home() {
           user?: {
             id: string;
             email?: string;
+            created_at?: string;
             user_metadata?: Record<string, string>;
             app_metadata?: Record<string, string>;
           };
@@ -209,7 +211,11 @@ export default function Home() {
         setUser(displayName);
         setAccountName(displayName);
         setAvatarUrl(metadata.avatar_url || metadata.picture || "");
-        setSessionUser({ id: nextUser.id, email: nextUser.email });
+        setSessionUser({
+          id: nextUser.id,
+          email: nextUser.email,
+          createdAt: nextUser.created_at,
+        });
         await loadCloudData(nextUser.id);
       };
       supabase.auth.getSession().then(({ data }) => syncSession(data.session));
@@ -691,6 +697,17 @@ export default function Home() {
   );
   const averageWorkoutsPerWeek = workouts.length / elapsedWeeks;
   const averageVolumePerWeek = totalVolume / elapsedWeeks;
+  const joinedDate = sessionUser?.createdAt
+    ? new Date(sessionUser.createdAt)
+    : workouts.length
+      ? new Date(`${workouts[workouts.length - 1].date}T00:00:00`)
+      : now;
+  const daysUsingLifted = Math.max(
+    1,
+    Math.floor(
+      (now.getTime() - joinedDate.getTime()) / (24 * 60 * 60 * 1000),
+    ) + 1,
+  );
   let currentStreak = 0;
   const streakWeek = new Date(
     now.getFullYear(),
@@ -822,7 +839,10 @@ export default function Home() {
               </div>
               <div>
                 <p className="text-sm font-semibold">{user}</p>
-                <p className="text-xs text-[var(--muted)]">Free account</p>
+                <p className="text-xs text-[var(--muted)]">
+                  Using Lifted for {daysUsingLifted}{" "}
+                  {daysUsingLifted === 1 ? "day" : "days"}
+                </p>
               </div>
             </button>
           </div>

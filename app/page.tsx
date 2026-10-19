@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.3.7";
+const APP_VERSION = "0.3.8";
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -1486,7 +1486,7 @@ export default function Home() {
         </section>
       </div>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-20 flex justify-around border-t border-[var(--line)] bg-[#fbfcf9]/95 px-2 py-2 backdrop-blur lg:hidden">
+      <nav className="fixed bottom-2 left-2 right-2 z-20 flex justify-around rounded-2xl border border-[var(--line)] bg-[#fbfcf9]/95 px-2 py-2 shadow-soft backdrop-blur lg:hidden">
         {navItems.map(({ label, icon: Icon }) => (
           <button
             key={label}

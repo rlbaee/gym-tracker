@@ -1,0 +1,10 @@
+{
+  "name": "Lifted Gym Tracker",
+  "short_name": "Lifted",
+  "description": "A calm, simple place to keep your training moving.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f8f3",
+  "theme_color": "#17211b",
+  "icons": []
+}

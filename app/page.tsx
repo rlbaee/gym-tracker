@@ -119,7 +119,7 @@ export default function Home() {
     const requestId = ++cloudRequest.current;
     setAuthReady(false);
     setCloudLoadError("");
-    const [{ data: cloudWorkouts, error: workoutsError }, { data: cloudRoutines, error: routinesError }, { data: cloudExercises }] = await Promise.all([
+    const [{ data: cloudWorkouts, error: workoutsError }, { data: cloudRoutines, error: routinesError }, { data: cloudExercises, error: exercisesError }] = await Promise.all([
       supabase.from("workouts").select("*").eq("user_id", userId).order("workout_date", { ascending: false }),
       supabase.from("routines").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
       supabase.from("custom_exercises").select("*").eq("user_id", userId).order("created_at", { ascending: true }),
@@ -130,12 +130,19 @@ export default function Home() {
       setWorkouts([]);
       setRoutines([]);
       setCloudLoadError(loadError?.code === "42P01"
-        ? "Your Supabase tables are not set up yet. Run supabase/schema.sql in the Supabase SQL Editor."
-        : "Cloud sync is temporarily unavailable. Your account is still safe; try again from Settings.");
+        ? "Your workout tables are not set up yet. Run the latest supabase/schema.sql in the Supabase SQL Editor."
+        : loadError?.code === "42501"
+          ? "Supabase denied access to your workout data. Run the latest RLS policies in supabase/schema.sql."
+          : "Cloud sync is temporarily unavailable. Your account is still safe; try again from Settings.");
     } else {
-      setAllExercises([...exercises, ...(cloudExercises || []).map((item) => ({ id: item.id, name: item.name, muscle: item.muscle, equipment: item.equipment }))]);
+      if (!exercisesError) {
+        setAllExercises([...exercises, ...(cloudExercises || []).map((item) => ({ id: item.id, name: item.name, muscle: item.muscle, equipment: item.equipment }))]);
+      }
       setWorkouts(cloudWorkouts.map((item) => ({ id: item.id, name: item.name, date: item.workout_date, exercises: item.logged_exercises.length, volume: Number(item.volume), loggedExercises: item.logged_exercises })));
       setRoutines(cloudRoutines.map((item) => ({ id: item.id, name: item.name, exerciseIds: item.exercise_ids })));
+      if (exercisesError?.code !== "42P01") {
+        setCloudLoadError(exercisesError ? "Custom exercises are unavailable until the latest Supabase schema is applied." : "");
+      }
     }
     setAuthReady(true);
   }

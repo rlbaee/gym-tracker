@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.2.1";
+const APP_VERSION = "0.2.2";
 
 type Exercise = { id: string; name: string; muscle: string; equipment: string };
 type SetRow = { weight: string; reps: string; done: boolean };
@@ -611,6 +611,15 @@ export default function Home() {
         ? current.filter((item) => item.id !== exercise.id)
         : [...current, exercise],
     );
+  }
+
+  function openMusic(provider: "spotify" | "apple") {
+    const query = encodeURIComponent("workout music");
+    const url =
+      provider === "spotify"
+        ? `https://open.spotify.com/search/${query}`
+        : `https://music.apple.com/us/search?term=${query}`;
+    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   const navItems = [
@@ -1319,6 +1328,23 @@ export default function Home() {
                 className="rounded-full p-2 hover:bg-white"
               >
                 <X size={20} />
+              </button>
+            </div>
+            <div className="mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--line)] bg-white p-3">
+              <span className="mr-1 text-xs font-semibold text-[var(--muted)]">
+                Play music
+              </span>
+              <button
+                onClick={() => openMusic("spotify")}
+                className="rounded-lg bg-[#e4f5e8] px-3 py-2 text-xs font-semibold text-[#287542] hover:bg-[#d4eedb]"
+              >
+                Spotify
+              </button>
+              <button
+                onClick={() => openMusic("apple")}
+                className="rounded-lg bg-[#f5e5ed] px-3 py-2 text-xs font-semibold text-[#9a3f6a] hover:bg-[#eed7e3]"
+              >
+                Apple Music
               </button>
             </div>
             <div className="space-y-4">

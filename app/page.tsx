@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.2.2";
+const APP_VERSION = "0.3.0";
 
 type Exercise = { id: string; name: string; muscle: string; equipment: string };
 type SetRow = { weight: string; reps: string; done: boolean };
@@ -136,6 +136,7 @@ export default function Home() {
   const [showWorkout, setShowWorkout] = useState(false);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showCreateExercise, setShowCreateExercise] = useState(false);
+  const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [customExerciseName, setCustomExerciseName] = useState("");
   const [customExerciseMuscle, setCustomExerciseMuscle] = useState("Other");
   const [customExerciseEquipment, setCustomExerciseEquipment] =
@@ -504,15 +505,13 @@ export default function Home() {
       .includes(search.toLowerCase()),
   );
 
-  function openWorkout() {
+  function openWorkout(exerciseList: Exercise[] = []) {
+    setSelectedExercises(exerciseList);
     setSets(
       Object.fromEntries(
-        selectedExercises.map((exercise) => [
+        exerciseList.map((exercise) => [
           exercise.id,
-          [
-            { weight: "", reps: "", done: false },
-            { weight: "", reps: "", done: false },
-          ],
+          [{ weight: "", reps: "", done: false }],
         ]),
       ),
     );
@@ -520,13 +519,27 @@ export default function Home() {
   }
 
   function useRoutine(routine: Routine) {
-    setSelectedExercises(
-      routine.exerciseIds
+    const routineExercises = routine.exerciseIds
         .map((id) => allExercises.find((exercise) => exercise.id === id))
-        .filter((exercise): exercise is Exercise => Boolean(exercise)),
-    );
+        .filter((exercise): exercise is Exercise => Boolean(exercise));
+    openWorkout(routineExercises);
     setActive("Overview");
-    setTimeout(() => setShowWorkout(true), 0);
+  }
+
+  function addSet(exerciseId: string) {
+    setSets((current) => ({
+      ...current,
+      [exerciseId]: [...(current[exerciseId] || []), { weight: "", reps: "", done: false }],
+    }));
+  }
+
+  function removeSet(exerciseId: string) {
+    setSets((current) => ({
+      ...current,
+      [exerciseId]: (current[exerciseId] || []).length > 1
+        ? current[exerciseId].slice(0, -1)
+        : current[exerciseId],
+    }));
   }
 
   async function saveRoutine() {
@@ -559,6 +572,10 @@ export default function Home() {
   }
 
   async function saveWorkout() {
+    if (selectedExercises.length === 0) {
+      setCloudError("Add at least one exercise before finishing the workout.");
+      return;
+    }
     const volume = Object.values(sets)
       .flat()
       .reduce(
@@ -606,11 +623,18 @@ export default function Home() {
   }
 
   function toggleExercise(exercise: Exercise) {
+    const alreadySelected = selectedExercises.some((item) => item.id === exercise.id);
     setSelectedExercises((current) =>
-      current.some((item) => item.id === exercise.id)
+      alreadySelected
         ? current.filter((item) => item.id !== exercise.id)
         : [...current, exercise],
     );
+    setSets((current) => {
+      const next = { ...current };
+      if (alreadySelected) delete next[exercise.id];
+      else next[exercise.id] = [{ weight: "", reps: "", done: false }];
+      return next;
+    });
   }
 
   function openMusic(provider: "spotify" | "apple") {
@@ -859,7 +883,7 @@ export default function Home() {
                   </p>
                 </div>
                 <button
-                  onClick={openWorkout}
+                  onClick={() => openWorkout()}
                   className="flex w-fit items-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-white shadow-soft transition hover:-translate-y-0.5"
                 >
                   <Plus size={17} />
@@ -987,7 +1011,8 @@ export default function Home() {
                 {workouts.map((workout) => (
                   <div
                     key={workout.id}
-                    className="rounded-2xl border border-[var(--line)] bg-white p-5"
+                    onClick={() => setSelectedWorkout(workout)}
+                    className="cursor-pointer rounded-2xl border border-[var(--line)] bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-soft"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
@@ -1360,7 +1385,22 @@ export default function Home() {
                         {exercise.muscle} · {exercise.equipment}
                       </p>
                     </div>
-                    <Timer size={17} className="text-[#75a889]" />
+                    <div className="flex items-center gap-2">
+                      <Timer size={17} className="text-[#75a889]" />
+                      <button
+                        onClick={() => {
+                          setSelectedExercises((current) => current.filter((item) => item.id !== exercise.id));
+                          setSets((current) => {
+                            const next = { ...current };
+                            delete next[exercise.id];
+                            return next;
+                          });
+                        }}
+                        className="text-xs font-semibold text-[#a85454]"
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                   {(sets[exercise.id] || []).map((set, index) => (
                     <div
@@ -1420,23 +1460,19 @@ export default function Home() {
                       </button>
                     </div>
                   ))}
-                  <button
-                    onClick={() =>
-                      setSets((current) => ({
-                        ...current,
-                        [exercise.id]: [
-                          ...current[exercise.id],
-                          { weight: "", reps: "", done: false },
-                        ],
-                      }))
-                    }
-                    className="mt-1 text-xs font-semibold text-[#75a889]"
-                  >
-                    + Add set
-                  </button>
+                  <div className="mt-2 flex items-center gap-2">
+                    <button onClick={() => removeSet(exercise.id)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[var(--line)] text-lg text-[var(--muted)]">−</button>
+                    <span className="min-w-16 text-center text-xs text-[var(--muted)]">{(sets[exercise.id] || []).length} sets</span>
+                    <button onClick={() => addSet(exercise.id)} className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#b8c9bb] text-lg text-[#56856a]">+</button>
+                  </div>
                 </div>
               ))}
             </div>
+            {selectedExercises.length === 0 && (
+              <div className="rounded-2xl bg-[#eef7ef] p-8 text-center text-sm text-[var(--muted)]">
+                Start by adding the exercises you actually do today.
+              </div>
+            )}
             <button
               onClick={() => setShowExercisePicker(true)}
               className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#b8c9bb] py-3 text-sm font-semibold text-[#56856a]"
@@ -1592,6 +1628,49 @@ export default function Home() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {selectedWorkout && (
+        <div className="fixed inset-0 z-30 flex items-center justify-center bg-[rgba(23,33,27,.3)] p-5">
+          <div className="scale-in max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-[#fbfcf9] p-6 sm:p-7">
+            <div className="mb-6 flex items-start justify-between">
+              <div>
+                <p className="text-sm font-semibold text-[#75a889]">{selectedWorkout.date}</p>
+                <h2 className="mt-1 text-2xl font-bold">{selectedWorkout.name}</h2>
+                <p className="mt-1 text-sm text-[var(--muted)]">{selectedWorkout.exercises} exercises · {formatNumber(selectedWorkout.volume)} kg total volume</p>
+              </div>
+              <button onClick={() => setSelectedWorkout(null)} className="rounded-full p-2 hover:bg-white"><X size={20} /></button>
+            </div>
+            {(() => {
+              const muscleVolume = selectedWorkout.loggedExercises.reduce<Record<string, number>>((result, logged) => {
+                const muscle = allExercises.find((exercise) => exercise.id === logged.exerciseId)?.muscle || "Other";
+                result[muscle] = (result[muscle] || 0) + logged.sets.reduce((sum, set) => sum + set.weight * set.reps, 0);
+                return result;
+              }, {});
+              const total = Object.values(muscleVolume).reduce((sum, value) => sum + value, 0) || 1;
+              return (
+                <div className="mb-6 rounded-2xl border border-[var(--line)] bg-white p-5">
+                  <h3 className="font-bold">Muscle focus</h3>
+                  <p className="mt-1 text-sm text-[var(--muted)]">Share of this workout&apos;s logged volume</p>
+                  <div className="mt-5 space-y-3">
+                    {Object.entries(muscleVolume).sort(([, a], [, b]) => b - a).map(([muscle, value]) => {
+                      const percentage = Math.round((value / total) * 100);
+                      return <div key={muscle}><div className="mb-1 flex justify-between text-xs font-semibold"><span>{muscle}</span><span>{percentage}%</span></div><div className="h-2 overflow-hidden rounded-full bg-[#edf2ed]"><div className="h-full rounded-full bg-[#8fbea0]" style={{ width: `${percentage}%` }} /></div></div>;
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+            <div className="space-y-3">
+              {selectedWorkout.loggedExercises.map((logged) => (
+                <div key={logged.exerciseId} className="rounded-2xl border border-[var(--line)] bg-white p-4">
+                  <div className="flex items-center justify-between"><div><p className="font-semibold">{logged.exerciseName}</p><p className="mt-1 text-xs text-[var(--muted)]">{logged.sets.length} sets · {formatNumber(logged.sets.reduce((sum, set) => sum + set.weight * set.reps, 0))} kg volume</p></div><TrendingUp size={17} className="text-[#75a889]" /></div>
+                  <div className="mt-3 flex flex-wrap gap-2">{logged.sets.map((set, index) => <span key={`${logged.exerciseId}-${index}`} className="rounded-lg bg-[#f5f8f4] px-2.5 py-1.5 text-xs text-[var(--muted)]">Set {index + 1}: {set.weight}kg × {set.reps}</span>)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </main>

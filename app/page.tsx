@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.3.3";
+const APP_VERSION = "0.3.4";
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -561,6 +561,37 @@ export default function Home() {
       [exerciseId]: (current[exerciseId] || []).length > 1
         ? current[exerciseId].slice(0, -1)
         : current[exerciseId],
+    }));
+  }
+
+  function updateSetValue(
+    exerciseId: string,
+    index: number,
+    field: "weight" | "reps",
+    value: string,
+  ) {
+    setSets((current) => ({
+      ...current,
+      [exerciseId]: current[exerciseId].map((item, i) =>
+        i === index ? { ...item, [field]: value } : item,
+      ),
+    }));
+  }
+
+  function adjustSetValue(
+    exerciseId: string,
+    index: number,
+    field: "weight" | "reps",
+    amount: number,
+  ) {
+    setSets((current) => ({
+      ...current,
+      [exerciseId]: current[exerciseId].map((item, i) => {
+        if (i !== index) return item;
+        const currentValue = Number(item[field]) || 0;
+        const nextValue = Math.max(0, currentValue + amount);
+        return { ...item, [field]: String(nextValue || "") };
+      }),
     }));
   }
 
@@ -1483,59 +1514,72 @@ export default function Home() {
                   {(sets[exercise.id] || []).map((set, index) => (
                     <div
                       key={index}
-                      className="mb-2 grid grid-cols-[32px_1fr_1fr_40px] items-center gap-2"
+                      className="mb-3 rounded-xl bg-[#f8faf7] p-2"
                     >
-                      <span className="text-center text-xs text-[var(--muted)]">
-                        {index + 1}
-                      </span>
-                      <input
-                        value={set.weight}
-                        onChange={(event) =>
-                          setSets((current) => ({
-                            ...current,
-                            [exercise.id]: current[exercise.id].map(
-                              (item, i) =>
-                                i === index
-                                  ? { ...item, weight: event.target.value }
-                                  : item,
-                            ),
-                          }))
-                        }
-                        placeholder="kg"
-                        className="w-full rounded-lg border border-[var(--line)] bg-[#fbfcf9] px-3 py-2 text-sm outline-none focus:border-[#75a889]"
-                      />
-                      <input
-                        value={set.reps}
-                        onChange={(event) =>
-                          setSets((current) => ({
-                            ...current,
-                            [exercise.id]: current[exercise.id].map(
-                              (item, i) =>
-                                i === index
-                                  ? { ...item, reps: event.target.value }
-                                  : item,
-                            ),
-                          }))
-                        }
-                        placeholder="reps"
-                        className="w-full rounded-lg border border-[var(--line)] bg-[#fbfcf9] px-3 py-2 text-sm outline-none focus:border-[#75a889]"
-                      />
-                      <button
-                        onClick={() =>
-                          setSets((current) => ({
-                            ...current,
-                            [exercise.id]: current[exercise.id].map(
-                              (item, i) =>
-                                i === index
-                                  ? { ...item, done: !item.done }
-                                  : item,
-                            ),
-                          }))
-                        }
-                        className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm ${set.done ? "border-[#75a889] bg-[var(--mint)] text-[#56856a]" : "border-[var(--line)] text-transparent"}`}
-                      >
-                        ✓
-                      </button>
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-xs font-semibold text-[var(--muted)]">
+                          Set {index + 1}
+                        </span>
+                        <button
+                          onClick={() =>
+                            setSets((current) => ({
+                              ...current,
+                              [exercise.id]: current[exercise.id].map(
+                                (item, i) =>
+                                  i === index
+                                    ? { ...item, done: !item.done }
+                                    : item,
+                              ),
+                            }))
+                          }
+                          className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm ${set.done ? "border-[#75a889] bg-[var(--mint)] text-[#56856a]" : "border-[var(--line)] text-transparent"}`}
+                        >
+                          ✓
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">
+                            <span>Weight</span>
+                            <span>kg</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => adjustSetValue(exercise.id, index, "weight", -2.5)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-lg">−</button>
+                            <input
+                              inputMode="decimal"
+                              value={set.weight}
+                              onChange={(event) => updateSetValue(exercise.id, index, "weight", event.target.value)}
+                              placeholder="0"
+                              aria-label={`Set ${index + 1} weight in kilograms`}
+                              className="min-w-0 w-full rounded-lg border border-[var(--line)] bg-white px-2 py-2.5 text-center text-sm font-semibold outline-none focus:border-[#75a889]"
+                            />
+                            <button onClick={() => adjustSetValue(exercise.id, index, "weight", 2.5)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#b8c9bb] bg-white text-lg text-[#56856a]">+</button>
+                          </div>
+                          <div className="mt-1 flex gap-1">
+                            {[20, 40, 60, 80, 100].map((value) => (
+                              <button key={value} onClick={() => updateSetValue(exercise.id, index, "weight", String(value))} className="flex-1 rounded-md bg-white py-1 text-[10px] text-[var(--muted)] hover:bg-[#e4f5e8]">{value}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="mb-1 flex items-center justify-between text-[10px] font-semibold uppercase tracking-wide text-[var(--muted)]">
+                            <span>Reps</span>
+                            <span>count</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => adjustSetValue(exercise.id, index, "reps", -1)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[var(--line)] bg-white text-lg">−</button>
+                            <input
+                              inputMode="numeric"
+                              value={set.reps}
+                              onChange={(event) => updateSetValue(exercise.id, index, "reps", event.target.value)}
+                              placeholder="0"
+                              aria-label={`Set ${index + 1} repetitions`}
+                              className="min-w-0 w-full rounded-lg border border-[var(--line)] bg-white px-2 py-2.5 text-center text-sm font-semibold outline-none focus:border-[#75a889]"
+                            />
+                            <button onClick={() => adjustSetValue(exercise.id, index, "reps", 1)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-[#b8c9bb] bg-white text-lg text-[#56856a]">+</button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   ))}
                   <div className="mt-2 flex items-center gap-2">

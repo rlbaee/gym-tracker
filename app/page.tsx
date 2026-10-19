@@ -5,6 +5,7 @@ import {
   BarChart3, ChevronRight, CircleUserRound, Dumbbell, History, LogOut,
   Menu, Plus, Search, Settings, Sparkles, Timer, TrendingUp, Trophy, X,
 } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 type Exercise = { id: string; name: string; muscle: string; equipment: string };
 type SetRow = { weight: string; reps: string; done: boolean };
@@ -46,6 +47,14 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [progressExercise, setProgressExercise] = useState("bench");
   const [user, setUser] = useState("Alex");
+  const [authReady, setAuthReady] = useState(!supabase);
+  const [sessionUser, setSessionUser] = useState<{ id: string; email?: string } | null>(null);
+  const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("lifted-workouts");
@@ -54,7 +63,60 @@ export default function Home() {
     if (savedRoutines) setRoutines(JSON.parse(savedRoutines));
     const savedUser = window.localStorage.getItem("lifted-user");
     if (savedUser) setUser(savedUser);
+    if (!supabase) return;
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session?.user) {
+        setSessionUser({ id: data.session.user.id, email: data.session.user.email });
+        await loadCloudData(data.session.user.id);
+      }
+      setAuthReady(true);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+      if (nextSession?.user) {
+        setSessionUser({ id: nextSession.user.id, email: nextSession.user.email });
+        await loadCloudData(nextSession.user.id);
+      } else {
+        setSessionUser(null);
+      }
+      setAuthReady(true);
+    });
+    return () => listener.subscription.unsubscribe();
   }, []);
+
+  async function loadCloudData(userId: string) {
+    if (!supabase) return;
+    const [{ data: cloudWorkouts }, { data: cloudRoutines }] = await Promise.all([
+      supabase.from("workouts").select("*").eq("user_id", userId).order("workout_date", { ascending: false }),
+      supabase.from("routines").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
+    ]);
+    if (cloudWorkouts) setWorkouts(cloudWorkouts.map((item) => ({ id: item.id, name: item.name, date: item.workout_date, exercises: item.logged_exercises.length, volume: Number(item.volume), loggedExercises: item.logged_exercises })));
+    if (cloudRoutines) setRoutines(cloudRoutines.map((item) => ({ id: item.id, name: item.name, exerciseIds: item.exercise_ids })));
+  }
+
+  async function submitAuth(event: React.FormEvent) {
+    event.preventDefault();
+    if (!supabase) return;
+    setAuthBusy(true);
+    setAuthError("");
+    setAuthMessage("");
+    const result = authMode === "sign-in"
+      ? await supabase.auth.signInWithPassword({ email: authEmail, password: authPassword })
+      : await supabase.auth.signUp({ email: authEmail, password: authPassword });
+    if (result.error) setAuthError(result.error.message);
+    else if (authMode === "sign-up" && !result.data.session) setAuthMessage("Check your email to confirm your account.");
+    setAuthBusy(false);
+  }
+
+  async function signInWithGoogle() {
+    if (!supabase) return;
+    await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
+  }
+
+  async function signOut() {
+    if (supabase) await supabase.auth.signOut();
+    setSessionUser(null);
+    setUser("Guest");
+  }
 
   const totalVolume = useMemo(() => workouts.reduce((sum, workout) => sum + workout.volume, 0), [workouts]);
   const filteredExercises = exercises.filter((exercise) =>
@@ -74,15 +136,16 @@ export default function Home() {
     setTimeout(() => setShowWorkout(true), 0);
   }
 
-  function saveRoutine() {
+  async function saveRoutine() {
     const name = window.prompt("Name this routine", "My routine")?.trim();
     if (!name || selectedExercises.length === 0) return;
     const next = [{ id: String(Date.now()), name, exerciseIds: selectedExercises.map((exercise) => exercise.id) }, ...routines];
     setRoutines(next);
     window.localStorage.setItem("lifted-routines", JSON.stringify(next));
+    if (supabase && sessionUser) await supabase.from("routines").insert({ user_id: sessionUser.id, name, exercise_ids: selectedExercises.map((exercise) => exercise.id) });
   }
 
-  function saveWorkout() {
+  async function saveWorkout() {
     const volume = Object.values(sets).flat().reduce((sum, set) => sum + (Number(set.weight) || 0) * (Number(set.reps) || 0), 0);
     const newWorkout: Workout = {
       id: String(Date.now()),
@@ -99,6 +162,7 @@ export default function Home() {
     const next = [newWorkout, ...workouts];
     setWorkouts(next);
     window.localStorage.setItem("lifted-workouts", JSON.stringify(next));
+    if (supabase && sessionUser) await supabase.from("workouts").insert({ user_id: sessionUser.id, name: newWorkout.name, workout_date: newWorkout.date, volume: newWorkout.volume, logged_exercises: newWorkout.loggedExercises });
     setShowWorkout(false);
     setActive("History");
   }
@@ -117,6 +181,9 @@ export default function Home() {
     { label: "Progress", icon: TrendingUp },
   ];
 
+  if (!authReady) return <main className="grain flex min-h-screen items-center justify-center text-sm text-[var(--muted)]">Loading your account…</main>;
+  if (supabase && !sessionUser) return <main className="grain flex min-h-screen items-center justify-center p-5"><div className="w-full max-w-md rounded-3xl border border-[var(--line)] bg-white p-7 shadow-soft"><div className="mb-8 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ink)] text-white"><Dumbbell size={19} /></div><span className="text-xl font-bold">lifted<span className="text-[#83b798]">.</span></span></div><h1 className="text-2xl font-bold">{authMode === "sign-in" ? "Welcome back." : "Create your account."}</h1><p className="mt-2 text-sm text-[var(--muted)]">Your workouts sync across every device.</p><form onSubmit={submitAuth} className="mt-7 space-y-3"><input required type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="Email address" className="w-full rounded-xl border border-[var(--line)] bg-[#fbfcf9] px-4 py-3 text-sm outline-none focus:border-[#75a889]" /><input required minLength={6} type="password" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="Password (6+ characters)" className="w-full rounded-xl border border-[var(--line)] bg-[#fbfcf9] px-4 py-3 text-sm outline-none focus:border-[#75a889]" />{authError && <p className="text-sm text-red-600">{authError}</p>}{authMessage && <p className="text-sm text-[#56856a]">{authMessage}</p>}<button disabled={authBusy} className="w-full rounded-xl bg-[var(--ink)] py-3 text-sm font-semibold text-white disabled:opacity-60">{authBusy ? "Please wait…" : authMode === "sign-in" ? "Sign in" : "Create account"}</button></form><button onClick={signInWithGoogle} className="mt-3 w-full rounded-xl border border-[var(--line)] bg-white py-3 text-sm font-semibold">Continue with Google</button><button onClick={() => { setAuthMode(authMode === "sign-in" ? "sign-up" : "sign-in"); setAuthError(""); setAuthMessage(""); }} className="mt-5 w-full text-sm text-[var(--muted)]">{authMode === "sign-in" ? "New here? Create an account" : "Already have an account? Sign in"}</button></div></main>;
+
   return (
     <main className="grain min-h-screen">
       <div className="mx-auto flex min-h-screen max-w-[1440px]">
@@ -134,7 +201,7 @@ export default function Home() {
           </nav>
           <div className="mt-auto space-y-1">
             <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-[#f0f4ef]"><Settings size={17} />Settings</button>
-            <button onClick={() => { setUser("Guest"); window.localStorage.removeItem("lifted-user"); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-[#f0f4ef]"><LogOut size={17} />Sign out</button>
+            <button onClick={signOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-[#f0f4ef]"><LogOut size={17} />Sign out</button>
             <div className="mt-4 flex items-center gap-3 border-t border-[var(--line)] pt-5">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d2e8d9] text-sm font-bold">A</div>
               <div><p className="text-sm font-semibold">{user}</p><p className="text-xs text-[var(--muted)]">Free account</p></div>

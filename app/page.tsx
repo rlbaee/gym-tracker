@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.4.0";
+const APP_VERSION = "0.4.1";
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -161,43 +161,6 @@ function getLocalDateKey(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-const missionApiUrl = "https://todaysmission-alpha.vercel.app/api/mission";
-const safeMissionFallbacks = [
-  "Hold a door open for someone and wish them a genuinely good day.",
-  "Send a thoughtful message to someone you have not spoken to in a while.",
-  "Give someone a specific, sincere compliment.",
-  "Drink a full glass of water before your next coffee or soft drink.",
-  "Take a ten-minute walk without checking your phone.",
-  "Put one small area of your room or workspace back in order.",
-  "Thank someone whose work often goes unnoticed.",
-  "Write down one thing you handled well this week.",
-  "Try one exercise with slower, more controlled reps than usual.",
-  "Stretch for five minutes before you sit down for the evening.",
-];
-const dailyQuotes = [
-  "Small steps still move you forward.",
-  "Consistency is built one ordinary choice at a time.",
-  "You do not need a perfect day to make meaningful progress.",
-  "Rest is part of the work, not a reward for finishing it.",
-  "Progress deserves your attention even when it is quiet.",
-  "Your habits are votes for the person you are becoming.",
-];
-
-function getDailyIndex(length: number, date = new Date()) {
-  const key = getLocalDateKey(date);
-  let hash = 0;
-  for (const character of key) {
-    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  }
-  return hash % length;
-}
-
-function isSafeMission(mission: string) {
-  return !/\b(superglue|saran|duct tape|zip tie|toothbrush|toilet|car|phone|computer|wifi|alarm|poison|bleach|lube|firework|weapon|bomb|steal|break into|fake (?:police|parking)|harass|scare|prank|gaslight|glitter|nail polish|food coloring|public restroom|scream|run away)\b/i.test(
-    mission,
-  );
-}
-
 function formatDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -207,8 +170,6 @@ function formatDuration(seconds: number) {
 export default function Home() {
   const [active, setActive] = useState("Overview");
   const [showWorkout, setShowWorkout] = useState(false);
-  const [dailyMission, setDailyMission] = useState("");
-  const [missionLoading, setMissionLoading] = useState(true);
   const [workoutStartedAt, setWorkoutStartedAt] = useState<number | null>(null);
   const [workoutElapsed, setWorkoutElapsed] = useState(0);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
@@ -252,37 +213,6 @@ export default function Home() {
   const [cloudError, setCloudError] = useState("");
   const [cloudLoadError, setCloudLoadError] = useState("");
   const cloudRequest = useRef(0);
-
-  async function loadMission() {
-    setMissionLoading(true);
-    try {
-      const response = await fetch(missionApiUrl, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`Mission request failed: ${response.status}`);
-      }
-      const data: { mission?: unknown } = await response.json();
-      if (
-        typeof data.mission !== "string" ||
-        !data.mission.trim() ||
-        !isSafeMission(data.mission)
-      ) {
-        throw new Error("Mission was not suitable for display");
-      }
-      setDailyMission(data.mission.trim());
-    } catch {
-      setDailyMission(
-        safeMissionFallbacks[
-          Math.floor(Math.random() * safeMissionFallbacks.length)
-        ],
-      );
-    } finally {
-      setMissionLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (active === "Overview") void loadMission();
-  }, [active]);
 
   useEffect(() => {
     if (!showWorkout || workoutStartedAt === null) return;
@@ -1077,28 +1007,6 @@ export default function Home() {
                   <Plus size={17} />
                   Start workout
                 </button>
-              </div>
-              <div className="mb-8 rounded-2xl bg-[var(--ink)] p-5 text-white sm:p-6">
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#b1c9b7]">
-                      Random mission
-                    </p>
-                    <p className="mt-1 text-xs text-[#8fae99]">
-                      A fresh one appears when you return home
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => void loadMission()}
-                    disabled={missionLoading}
-                    className="rounded-lg bg-[#31443a] px-3 py-2 text-xs font-semibold text-[#dff2e6] disabled:opacity-60"
-                  >
-                    {missionLoading ? "Loading..." : "New mission"}
-                  </button>
-                </div>
-                <p className="max-w-3xl text-lg font-semibold leading-relaxed">
-                  {missionLoading ? "Finding a mission..." : dailyMission}
-                </p>
               </div>
               <div className="mb-8 grid gap-4 sm:grid-cols-3">
                 {[

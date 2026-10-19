@@ -40,13 +40,15 @@ export default function Home() {
   const [active, setActive] = useState("Overview");
   const [showWorkout, setShowWorkout] = useState(false);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
-  const [workouts, setWorkouts] = useState<Workout[]>(initialWorkouts);
-  const [routines, setRoutines] = useState<Routine[]>(initialRoutines);
+  const [workouts, setWorkouts] = useState<Workout[]>(supabase ? [] : initialWorkouts);
+  const [routines, setRoutines] = useState<Routine[]>(supabase ? [] : initialRoutines);
   const [selectedExercises, setSelectedExercises] = useState<Exercise[]>([exercises[0], exercises[2]]);
   const [sets, setSets] = useState<Record<string, SetRow[]>>({});
   const [search, setSearch] = useState("");
   const [progressExercise, setProgressExercise] = useState("bench");
-  const [user, setUser] = useState("Alex");
+  const [user, setUser] = useState("Guest");
+  const [accountName, setAccountName] = useState("");
+  const [accountNameBusy, setAccountNameBusy] = useState(false);
   const [authReady, setAuthReady] = useState(!supabase);
   const [sessionUser, setSessionUser] = useState<{ id: string; email?: string } | null>(null);
   const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
@@ -61,7 +63,7 @@ export default function Home() {
   useEffect(() => {
     if (supabase) {
       let active = true;
-      const syncSession = async (nextSession: { user?: { id: string; email?: string } } | null) => {
+      const syncSession = async (nextSession: { user?: { id: string; email?: string; user_metadata?: Record<string, string>; app_metadata?: Record<string, string> } } | null) => {
         const nextUser = nextSession?.user;
         if (!nextUser) {
           cloudRequest.current += 1;
@@ -72,6 +74,10 @@ export default function Home() {
           return;
         }
         if (!active) return;
+        const metadata = nextUser.user_metadata || {};
+        const displayName = metadata.full_name || metadata.name || metadata.user_name || nextUser.email?.split("@")[0] || "Athlete";
+        setUser(displayName);
+        setAccountName(displayName);
         setSessionUser({ id: nextUser.id, email: nextUser.email });
         await loadCloudData(nextUser.id);
       };
@@ -145,8 +151,19 @@ export default function Home() {
     setRoutines([]);
     setCloudError("");
     setUser("Guest");
+    setAccountName("");
     window.localStorage.removeItem("lifted-workouts");
     window.localStorage.removeItem("lifted-routines");
+  }
+
+  async function saveAccountName() {
+    const nextName = accountName.trim();
+    if (!supabase || !sessionUser || !nextName) return;
+    setAccountNameBusy(true);
+    const { error } = await supabase.auth.updateUser({ data: { full_name: nextName } });
+    if (error) setCloudError("We could not update your name. Please try again.");
+    else setUser(nextName);
+    setAccountNameBusy(false);
   }
 
   const totalVolume = useMemo(() => workouts.reduce((sum, workout) => sum + workout.volume, 0), [workouts]);
@@ -224,6 +241,16 @@ export default function Home() {
     { label: "Progress", icon: TrendingUp },
   ];
 
+  const workoutsThisWeek = workouts.filter((workout) => {
+    const date = new Date(`${workout.date}T00:00:00`);
+    const now = new Date();
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - now.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    return date >= weekStart && date <= now;
+  }).length;
+  const todayLabel = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date());
+
   if (!authReady) return <main className="grain flex min-h-screen items-center justify-center text-sm text-[var(--muted)]">Loading your account…</main>;
   if (supabase && !sessionUser) return <main className="grain flex min-h-screen items-center justify-center p-5"><div className="w-full max-w-md rounded-3xl border border-[var(--line)] bg-white p-7 shadow-soft"><div className="mb-8 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ink)] text-white"><Dumbbell size={19} /></div><span className="text-xl font-bold">lifted<span className="text-[#83b798]">.</span></span></div><h1 className="text-2xl font-bold">{authMode === "sign-in" ? "Welcome back." : "Create your account."}</h1><p className="mt-2 text-sm text-[var(--muted)]">Your workouts sync across every device.</p><form onSubmit={submitAuth} className="mt-7 space-y-3"><input required type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="Email address" className="w-full rounded-xl border border-[var(--line)] bg-[#fbfcf9] px-4 py-3 text-sm outline-none focus:border-[#75a889]" /><input required minLength={6} type="password" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="Password (6+ characters)" className="w-full rounded-xl border border-[var(--line)] bg-[#fbfcf9] px-4 py-3 text-sm outline-none focus:border-[#75a889]" />{authError && <p className="text-sm text-red-600">{authError}</p>}{authMessage && <p className="text-sm text-[#56856a]">{authMessage}</p>}<button disabled={authBusy} className="w-full rounded-xl bg-[var(--ink)] py-3 text-sm font-semibold text-white disabled:opacity-60">{authBusy ? "Please wait…" : authMode === "sign-in" ? "Sign in" : "Create account"}</button></form><button onClick={signInWithGoogle} className="mt-3 w-full rounded-xl border border-[var(--line)] bg-white py-3 text-sm font-semibold">Continue with Google</button><button onClick={() => { setAuthMode(authMode === "sign-in" ? "sign-up" : "sign-in"); setAuthError(""); setAuthMessage(""); }} className="mt-5 w-full text-sm text-[var(--muted)]">{authMode === "sign-in" ? "New here? Create an account" : "Already have an account? Sign in"}</button></div></main>;
 
@@ -243,10 +270,10 @@ export default function Home() {
             ))}
           </nav>
           <div className="mt-auto space-y-1">
-            <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-[#f0f4ef]"><Settings size={17} />Settings</button>
+            <button onClick={() => setActive("Settings")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active === "Settings" ? "bg-[var(--mint)] text-[var(--ink)]" : "text-[var(--muted)] hover:bg-[#f0f4ef]"}`}><Settings size={17} />Settings</button>
             <button onClick={signOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-[#f0f4ef]"><LogOut size={17} />Sign out</button>
             <div className="mt-4 flex items-center gap-3 border-t border-[var(--line)] pt-5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d2e8d9] text-sm font-bold">A</div>
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d2e8d9] text-sm font-bold">{user.charAt(0).toUpperCase()}</div>
               <div><p className="text-sm font-semibold">{user}</p><p className="text-xs text-[var(--muted)]">Free account</p></div>
             </div>
           </div>
@@ -265,11 +292,11 @@ export default function Home() {
           {cloudError && <div role="alert" className="mb-4 flex items-center justify-between rounded-xl border border-[#e7c9a4] bg-[#fff8ed] px-4 py-3 text-sm text-[#8a5a21]"><span>{cloudError}</span><button onClick={() => setCloudError("")} aria-label="Dismiss error"><X size={16} /></button></div>}
           {active === "Overview" && <div className="fade-in">
             <div className="mb-10 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-              <div><p className="mb-2 text-sm font-medium text-[#75a889]">Saturday, October 19</p><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Good morning, {user}.</h1><p className="mt-2 text-[var(--muted)]">Ready to make today count?</p></div>
+              <div><p className="mb-2 text-sm font-medium text-[#75a889]">{todayLabel}</p><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Good morning, {user}.</h1><p className="mt-2 text-[var(--muted)]">Ready to make today count?</p></div>
               <button onClick={openWorkout} className="flex w-fit items-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-white shadow-soft transition hover:-translate-y-0.5"><Plus size={17} />Start workout</button>
             </div>
             <div className="mb-8 grid gap-4 sm:grid-cols-3">
-              {[["This week", "3", "workouts"], ["Total volume", `${(totalVolume / 1000).toFixed(1)}k`, "kg lifted"], ["Current streak", "5", "days"]].map(([label, value, suffix], index) => (
+              {[["This week", String(workoutsThisWeek), "workouts"], ["Total volume", `${(totalVolume / 1000).toFixed(1)}k`, "kg lifted"], ["Current streak", workouts.length ? "1" : "0", "days"]].map(([label, value, suffix], index) => (
                 <div key={label} className={`rounded-2xl border border-[var(--line)] p-5 ${index === 1 ? "bg-[var(--ink)] text-white" : "bg-white"}`}><div className="mb-5 flex items-center justify-between"><p className={`text-sm ${index === 1 ? "text-[#b1c9b7]" : "text-[var(--muted)]"}`}>{label}</p>{index === 0 ? <Dumbbell size={17} /> : index === 1 ? <BarChart3 size={17} /> : <Trophy size={17} />}</div><p className="text-3xl font-bold">{value}<span className={`ml-1 text-sm font-normal ${index === 1 ? "text-[#b1c9b7]" : "text-[var(--muted)]"}`}>{suffix}</span></p></div>
               ))}
             </div>
@@ -284,6 +311,8 @@ export default function Home() {
           {active === "Progress" && <div className="fade-in"><div className="mb-8"><h1 className="text-3xl font-bold tracking-tight">Your progress</h1><p className="mt-2 text-[var(--muted)]">See how your working weight is moving over time.</p></div><div className="mb-5 flex flex-wrap gap-2">{exercises.map((exercise) => <button key={exercise.id} onClick={() => setProgressExercise(exercise.id)} className={`rounded-full px-3 py-2 text-xs font-semibold ${progressExercise === exercise.id ? "bg-[var(--ink)] text-white" : "border border-[var(--line)] bg-white text-[var(--muted)]"}`}>{exercise.name}</button>)}</div>{(() => { const points = workouts.flatMap((workout) => workout.loggedExercises.filter((logged) => logged.exerciseId === progressExercise).map((logged) => ({ date: workout.date, weight: Math.max(...logged.sets.map((set) => set.weight), 0) }))).reverse(); const max = Math.max(...points.map((point) => point.weight), 1); const first = points[0]?.weight || 0; const latest = points.at(-1)?.weight || 0; const change = latest - first; return <div className="rounded-2xl border border-[var(--line)] bg-white p-6"><div className="mb-8 flex items-center justify-between"><div><h2 className="font-bold">Working weight</h2><p className="mt-1 text-sm text-[var(--muted)]">Your heaviest logged set for each session</p></div><TrendingUp className="text-[#75a889]" /></div>{points.length > 0 ? <><div className="flex h-56 items-end gap-3 border-b border-[var(--line)] px-2">{points.map((point, index) => <div key={`${point.date}-${index}`} className="group flex h-full flex-1 flex-col items-center justify-end gap-2"><div className="relative w-full max-w-16 rounded-t-lg bg-[#a8d5ba] transition hover:bg-[#75a889]" style={{ height: `${Math.max((point.weight / max) * 88, 8)}%` }}><span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-semibold opacity-0 transition group-hover:opacity-100">{point.weight}kg</span></div><span className="text-[10px] text-[var(--muted)]">{point.date.slice(5)}</span></div>)}</div><div className={`mt-5 flex items-center gap-2 text-sm ${change >= 0 ? "text-[#56856a]" : "text-amber-700"}`}><TrendingUp size={15} />{change >= 0 ? `${change} kg improvement` : `${Math.abs(change)} kg down`} since first logged session</div></> : <div className="rounded-xl bg-[#f5f8f4] p-8 text-center text-sm text-[var(--muted)]">Log this exercise in a workout to start seeing your progress.</div>}</div> })()}</div>}
 
           {active === "Workouts" && <div className="fade-in"><div className="mb-8 flex items-end justify-between"><div><h1 className="text-3xl font-bold tracking-tight">Workouts</h1><p className="mt-2 text-[var(--muted)]">Build your next session.</p></div><button onClick={openWorkout} className="flex items-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-white"><Plus size={17} />New workout</button></div><div className="rounded-2xl border border-dashed border-[#b8c9bb] bg-[#eef7ef] p-10 text-center"><Dumbbell className="mx-auto mb-4 text-[#75a889]" size={28} /><h2 className="font-bold">Start with a blank workout</h2><p className="mx-auto mt-2 max-w-sm text-sm text-[var(--muted)]">Choose your exercises, add your sets, and keep building momentum.</p><button onClick={openWorkout} className="mt-5 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold shadow-sm">Create workout</button></div></div>}
+
+          {active === "Settings" && <div className="fade-in"><div className="mb-8"><h1 className="text-3xl font-bold tracking-tight">Settings</h1><p className="mt-2 text-[var(--muted)]">Manage your Lifted account.</p></div><div className="max-w-2xl space-y-4"><section className="rounded-2xl border border-[var(--line)] bg-white p-6"><div className="mb-5 flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#d2e8d9] text-lg font-bold">{user.charAt(0).toUpperCase()}</div><div><h2 className="font-bold">Profile</h2><p className="text-sm text-[var(--muted)]">This name appears in your dashboard.</p></div></div><label className="block text-sm font-semibold">Display name<input value={accountName} onChange={(event) => setAccountName(event.target.value)} className="mt-2 w-full rounded-xl border border-[var(--line)] bg-[#fbfcf9] px-4 py-3 text-sm font-normal outline-none focus:border-[#75a889]" /></label><button onClick={saveAccountName} disabled={accountNameBusy || !accountName.trim() || accountName.trim() === user} className="mt-4 rounded-xl bg-[var(--ink)] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{accountNameBusy ? "Saving…" : "Save changes"}</button></section><section className="rounded-2xl border border-[var(--line)] bg-white p-6"><h2 className="font-bold">Account</h2><div className="mt-4 space-y-3 text-sm"><div className="flex items-center justify-between gap-4"><span className="text-[var(--muted)]">Email</span><span className="font-medium">{sessionUser?.email || "Local demo account"}</span></div><div className="flex items-center justify-between gap-4"><span className="text-[var(--muted)]">Data sync</span><span className="font-medium text-[#56856a]">{supabase ? "Supabase cloud" : "This browser only"}</span></div></div><button onClick={signOut} className="mt-6 flex items-center gap-2 rounded-xl border border-[#e7c9c9] px-4 py-2.5 text-sm font-semibold text-[#a85454] hover:bg-[#fff5f5]"><LogOut size={16} />Sign out</button></section></div></div>}
 
           {active === "Routines" && <div className="fade-in"><div className="mb-8 flex items-end justify-between"><div><h1 className="text-3xl font-bold tracking-tight">Routines</h1><p className="mt-2 text-[var(--muted)]">Your go-to sessions, ready when you are.</p></div><button onClick={saveRoutine} className="flex items-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-white"><Plus size={17} />Save routine</button></div><div className="grid gap-4 sm:grid-cols-2">{routines.map((routine) => <div key={routine.id} className="rounded-2xl border border-[var(--line)] bg-white p-5"><div className="mb-8 flex items-start justify-between"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--mint)]"><Sparkles size={18} /></div><span className="text-xs text-[var(--muted)]">{routine.exerciseIds.length} exercises</span></div><h2 className="font-bold">{routine.name}</h2><p className="mt-1 text-sm text-[var(--muted)]">{routine.exerciseIds.map((id) => exercises.find((exercise) => exercise.id === id)?.name).join(" · ")}</p><button onClick={() => useRoutine(routine)} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink)] py-2.5 text-sm font-semibold text-white">Use routine <ChevronRight size={16} /></button></div>)}</div></div>}
         </section>

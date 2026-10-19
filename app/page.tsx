@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.4.1";
+const APP_VERSION = "0.4.2";
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -175,6 +175,9 @@ export default function Home() {
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showCreateExercise, setShowCreateExercise] = useState(false);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
+  const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
+  const [editingWorkoutDate, setEditingWorkoutDate] = useState("");
+  const [editingWorkoutName, setEditingWorkoutName] = useState("Quick workout");
   const [customExerciseName, setCustomExerciseName] = useState("");
   const [customExerciseMuscle, setCustomExerciseMuscle] = useState("Other");
   const [customExerciseEquipment, setCustomExerciseEquipment] =
@@ -559,6 +562,9 @@ export default function Home() {
   );
 
   function openWorkout(exerciseList: Exercise[] = []) {
+    setEditingWorkoutId(null);
+    setEditingWorkoutDate(getLocalDateKey());
+    setEditingWorkoutName("Quick workout");
     setSelectedExercises(exerciseList);
     setSets(
       Object.fromEntries(
@@ -569,6 +575,39 @@ export default function Home() {
       ),
     );
     setWorkoutStartedAt(Date.now());
+    setWorkoutElapsed(0);
+    setShowWorkout(true);
+  }
+
+  function editWorkout(workout: Workout) {
+    const workoutExercises = workout.loggedExercises.map((logged) =>
+      allExercises.find((exercise) => exercise.id === logged.exerciseId) || {
+        id: logged.exerciseId,
+        name: logged.exerciseName,
+        muscle: "Other",
+        equipment: "Other",
+      },
+    );
+    setEditingWorkoutId(workout.id);
+    setEditingWorkoutDate(workout.date);
+    setEditingWorkoutName(workout.name);
+    setSelectedExercises(workoutExercises);
+    setSets(
+      Object.fromEntries(
+        workout.loggedExercises.map((logged) => [
+          logged.exerciseId,
+          logged.sets.length
+            ? logged.sets.map((set) => ({
+                weight: String(set.weight),
+                reps: String(set.reps),
+                done: true,
+              }))
+            : [{ weight: "", reps: "", done: false }],
+        ]),
+      ),
+    );
+    setSelectedWorkout(null);
+    setWorkoutStartedAt(null);
     setWorkoutElapsed(0);
     setShowWorkout(true);
   }
@@ -685,9 +724,9 @@ export default function Home() {
         0,
       );
     const newWorkout: Workout = {
-      id: String(Date.now()),
-      name: "Quick workout",
-      date: getLocalDateKey(),
+      id: editingWorkoutId || String(Date.now()),
+      name: editingWorkoutName.trim() || "Quick workout",
+      date: editingWorkoutDate || getLocalDateKey(),
       exercises: selectedExercises.length,
       volume,
       loggedExercises: selectedExercises.map((exercise) => ({
@@ -702,27 +741,42 @@ export default function Home() {
       })),
     };
     if (supabase && sessionUser) {
-      const { error } = await supabase
-        .from("workouts")
-        .insert({
-          user_id: sessionUser.id,
-          name: newWorkout.name,
-          workout_date: newWorkout.date,
-          volume: newWorkout.volume,
-          logged_exercises: newWorkout.loggedExercises,
-        });
+      const query = editingWorkoutId
+        ? supabase
+            .from("workouts")
+            .update({
+              name: newWorkout.name,
+              workout_date: newWorkout.date,
+              volume: newWorkout.volume,
+              logged_exercises: newWorkout.loggedExercises,
+            })
+            .eq("id", editingWorkoutId)
+            .eq("user_id", sessionUser.id)
+        : supabase.from("workouts").insert({
+            user_id: sessionUser.id,
+            name: newWorkout.name,
+            workout_date: newWorkout.date,
+            volume: newWorkout.volume,
+            logged_exercises: newWorkout.loggedExercises,
+          });
+      const { error } = await query;
       if (error) {
-        setCloudError("We could not save that workout. Please try again.");
+        setCloudError("We could not save those workout changes. Please try again.");
         return;
       }
     }
-    const next = [newWorkout, ...workouts];
+    const next = editingWorkoutId
+      ? workouts.map((workout) =>
+          workout.id === editingWorkoutId ? newWorkout : workout,
+        )
+      : [newWorkout, ...workouts];
     setWorkouts(next);
     if (!supabase)
       window.localStorage.setItem("lifted-workouts", JSON.stringify(next));
     setShowWorkout(false);
     setWorkoutStartedAt(null);
     setWorkoutElapsed(0);
+    setEditingWorkoutId(null);
     setActive("History");
   }
 
@@ -1500,9 +1554,11 @@ export default function Home() {
             <div className="mb-6 flex items-start justify-between">
               <div>
                 <p className="text-sm font-semibold text-[#75a889]">
-                  New session
+                  {editingWorkoutId ? "Edit session" : "New session"}
                 </p>
-                <h2 className="mt-1 text-2xl font-bold">Log your workout</h2>
+                <h2 className="mt-1 text-2xl font-bold">
+                  {editingWorkoutId ? "Update your workout" : "Log your workout"}
+                </h2>
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 rounded-xl bg-[#eef7ef] px-3 py-2 text-sm font-semibold text-[#56856a]">
@@ -1520,6 +1576,21 @@ export default function Home() {
                   <X size={20} />
                 </button>
               </div>
+            </div>
+            <div className="mb-5 grid gap-2 sm:grid-cols-[1fr_160px]">
+              <input
+                value={editingWorkoutName}
+                onChange={(event) => setEditingWorkoutName(event.target.value)}
+                aria-label="Workout name"
+                className="rounded-xl border border-[var(--line)] bg-white px-3 py-2.5 text-sm font-semibold outline-none focus:border-[#75a889]"
+              />
+              <input
+                type="date"
+                value={editingWorkoutDate}
+                onChange={(event) => setEditingWorkoutDate(event.target.value)}
+                aria-label="Workout date"
+                className="rounded-xl border border-[var(--line)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#75a889]"
+              />
             </div>
             <div className="mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--line)] bg-white p-3">
               <span className="mr-1 text-xs font-semibold text-[var(--muted)]">
@@ -1684,7 +1755,7 @@ export default function Home() {
                 onClick={saveWorkout}
                 className="flex-1 rounded-xl bg-[var(--ink)] py-3 text-sm font-semibold text-white"
               >
-                Finish workout
+                {editingWorkoutId ? "Save changes" : "Finish workout"}
               </button>
             </div>
           </div>
@@ -1835,6 +1906,12 @@ export default function Home() {
               </div>
               <button onClick={() => setSelectedWorkout(null)} className="rounded-full p-2 hover:bg-white"><X size={20} /></button>
             </div>
+            <button
+              onClick={() => editWorkout(selectedWorkout)}
+              className="mb-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink)] py-3 text-sm font-semibold text-white"
+            >
+              Edit workout
+            </button>
             {(() => {
               const muscleVolume = selectedWorkout.loggedExercises.reduce<Record<string, number>>((result, logged) => {
                 const muscle = allExercises.find((exercise) => exercise.id === logged.exerciseId)?.muscle || "Other";

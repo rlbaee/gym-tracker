@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.3.5";
+const APP_VERSION = "0.3.6";
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -147,9 +147,17 @@ function getLocalDateKey(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
+function formatDuration(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
 export default function Home() {
   const [active, setActive] = useState("Overview");
   const [showWorkout, setShowWorkout] = useState(false);
+  const [workoutStartedAt, setWorkoutStartedAt] = useState<number | null>(null);
+  const [workoutElapsed, setWorkoutElapsed] = useState(0);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [showCreateExercise, setShowCreateExercise] = useState(false);
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
@@ -191,6 +199,15 @@ export default function Home() {
   const [cloudError, setCloudError] = useState("");
   const [cloudLoadError, setCloudLoadError] = useState("");
   const cloudRequest = useRef(0);
+
+  useEffect(() => {
+    if (!showWorkout || workoutStartedAt === null) return;
+    const updateElapsed = () =>
+      setWorkoutElapsed(Math.max(0, Math.floor((Date.now() - workoutStartedAt) / 1000)));
+    updateElapsed();
+    const interval = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(interval);
+  }, [showWorkout, workoutStartedAt]);
 
   useEffect(() => {
     if (supabase) {
@@ -537,6 +554,8 @@ export default function Home() {
         ]),
       ),
     );
+    setWorkoutStartedAt(Date.now());
+    setWorkoutElapsed(0);
     setShowWorkout(true);
   }
 
@@ -688,6 +707,8 @@ export default function Home() {
     if (!supabase)
       window.localStorage.setItem("lifted-workouts", JSON.stringify(next));
     setShowWorkout(false);
+    setWorkoutStartedAt(null);
+    setWorkoutElapsed(0);
     setActive("History");
   }
 
@@ -1469,12 +1490,22 @@ export default function Home() {
                 </p>
                 <h2 className="mt-1 text-2xl font-bold">Log your workout</h2>
               </div>
-              <button
-                onClick={() => setShowWorkout(false)}
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 rounded-xl bg-[#eef7ef] px-3 py-2 text-sm font-semibold text-[#56856a]">
+                  <Timer size={16} />
+                  {formatDuration(workoutElapsed)}
+                </div>
+                <button
+                  onClick={() => {
+                    setShowWorkout(false);
+                    setWorkoutStartedAt(null);
+                    setWorkoutElapsed(0);
+                  }}
                 className="rounded-full p-2 hover:bg-white"
-              >
-                <X size={20} />
-              </button>
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
             <div className="mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--line)] bg-white p-3">
               <span className="mr-1 text-xs font-semibold text-[var(--muted)]">

@@ -22,6 +22,8 @@ body {
 button, input { font: inherit; }
 button { cursor: pointer; }
 ::selection { background: var(--sage); }
+button { transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, color 160ms ease, opacity 160ms ease; }
+button:active { transform: scale(0.98); }
 
 .grain {
   background-image: radial-gradient(rgba(23, 33, 27, 0.035) 0.7px, transparent 0.7px);
@@ -30,3 +32,10 @@ button { cursor: pointer; }
 
 .fade-in { animation: fade-in 420ms ease-out both; }
 @keyframes fade-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+.slide-up { animation: slide-up 280ms cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes slide-up { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+.scale-in { animation: scale-in 220ms ease-out both; }
+@keyframes scale-in { from { opacity: 0; transform: scale(.97); } to { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

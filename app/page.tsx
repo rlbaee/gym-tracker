@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3, ChevronRight, CircleUserRound, Dumbbell, History, LogOut,
   Menu, Plus, Search, Settings, Sparkles, Timer, TrendingUp, Trophy, X,
@@ -55,42 +55,63 @@ export default function Home() {
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  const [cloudError, setCloudError] = useState("");
+  const cloudRequest = useRef(0);
 
   useEffect(() => {
+    if (supabase) {
+      let active = true;
+      const syncSession = async (nextSession: { user?: { id: string; email?: string } } | null) => {
+        const nextUser = nextSession?.user;
+        if (!nextUser) {
+          cloudRequest.current += 1;
+          setSessionUser(null);
+          setWorkouts([]);
+          setRoutines([]);
+          setAuthReady(true);
+          return;
+        }
+        if (!active) return;
+        setSessionUser({ id: nextUser.id, email: nextUser.email });
+        await loadCloudData(nextUser.id);
+      };
+      supabase.auth.getSession().then(({ data }) => syncSession(data.session));
+      const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+        syncSession(nextSession);
+      });
+      return () => {
+        active = false;
+        listener.subscription.unsubscribe();
+        cloudRequest.current += 1;
+      };
+    }
     const saved = window.localStorage.getItem("lifted-workouts");
     if (saved) setWorkouts(JSON.parse(saved));
     const savedRoutines = window.localStorage.getItem("lifted-routines");
     if (savedRoutines) setRoutines(JSON.parse(savedRoutines));
     const savedUser = window.localStorage.getItem("lifted-user");
     if (savedUser) setUser(savedUser);
-    if (!supabase) return;
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (data.session?.user) {
-        setSessionUser({ id: data.session.user.id, email: data.session.user.email });
-        await loadCloudData(data.session.user.id);
-      }
-      setAuthReady(true);
-    });
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
-      if (nextSession?.user) {
-        setSessionUser({ id: nextSession.user.id, email: nextSession.user.email });
-        await loadCloudData(nextSession.user.id);
-      } else {
-        setSessionUser(null);
-      }
-      setAuthReady(true);
-    });
-    return () => listener.subscription.unsubscribe();
   }, []);
 
   async function loadCloudData(userId: string) {
     if (!supabase) return;
+    const requestId = ++cloudRequest.current;
+    setAuthReady(false);
+    setCloudError("");
     const [{ data: cloudWorkouts }, { data: cloudRoutines }] = await Promise.all([
       supabase.from("workouts").select("*").eq("user_id", userId).order("workout_date", { ascending: false }),
       supabase.from("routines").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
     ]);
-    if (cloudWorkouts) setWorkouts(cloudWorkouts.map((item) => ({ id: item.id, name: item.name, date: item.workout_date, exercises: item.logged_exercises.length, volume: Number(item.volume), loggedExercises: item.logged_exercises })));
-    if (cloudRoutines) setRoutines(cloudRoutines.map((item) => ({ id: item.id, name: item.name, exerciseIds: item.exercise_ids })));
+    if (requestId !== cloudRequest.current) return;
+    if (cloudWorkouts === null || cloudRoutines === null) {
+      setWorkouts([]);
+      setRoutines([]);
+      setCloudError("We could not load your synced data. Please refresh and try again.");
+    } else {
+      setWorkouts(cloudWorkouts.map((item) => ({ id: item.id, name: item.name, date: item.workout_date, exercises: item.logged_exercises.length, volume: Number(item.volume), loggedExercises: item.logged_exercises })));
+      setRoutines(cloudRoutines.map((item) => ({ id: item.id, name: item.name, exerciseIds: item.exercise_ids })));
+    }
+    setAuthReady(true);
   }
 
   async function submitAuth(event: React.FormEvent) {
@@ -118,8 +139,14 @@ export default function Home() {
 
   async function signOut() {
     if (supabase) await supabase.auth.signOut();
+    cloudRequest.current += 1;
     setSessionUser(null);
+    setWorkouts([]);
+    setRoutines([]);
+    setCloudError("");
     setUser("Guest");
+    window.localStorage.removeItem("lifted-workouts");
+    window.localStorage.removeItem("lifted-routines");
   }
 
   const totalVolume = useMemo(() => workouts.reduce((sum, workout) => sum + workout.volume, 0), [workouts]);
@@ -143,10 +170,16 @@ export default function Home() {
   async function saveRoutine() {
     const name = window.prompt("Name this routine", "My routine")?.trim();
     if (!name || selectedExercises.length === 0) return;
+    if (supabase && sessionUser) {
+      const { error } = await supabase.from("routines").insert({ user_id: sessionUser.id, name, exercise_ids: selectedExercises.map((exercise) => exercise.id) });
+      if (error) {
+        setCloudError("We could not save that routine. Please try again.");
+        return;
+      }
+    }
     const next = [{ id: String(Date.now()), name, exerciseIds: selectedExercises.map((exercise) => exercise.id) }, ...routines];
     setRoutines(next);
-    window.localStorage.setItem("lifted-routines", JSON.stringify(next));
-    if (supabase && sessionUser) await supabase.from("routines").insert({ user_id: sessionUser.id, name, exercise_ids: selectedExercises.map((exercise) => exercise.id) });
+    if (!supabase) window.localStorage.setItem("lifted-routines", JSON.stringify(next));
   }
 
   async function saveWorkout() {
@@ -163,10 +196,16 @@ export default function Home() {
         sets: (sets[exercise.id] || []).filter((set) => Number(set.weight) > 0 && Number(set.reps) > 0).map((set) => ({ weight: Number(set.weight), reps: Number(set.reps) })),
       })),
     };
+    if (supabase && sessionUser) {
+      const { error } = await supabase.from("workouts").insert({ user_id: sessionUser.id, name: newWorkout.name, workout_date: newWorkout.date, volume: newWorkout.volume, logged_exercises: newWorkout.loggedExercises });
+      if (error) {
+        setCloudError("We could not save that workout. Please try again.");
+        return;
+      }
+    }
     const next = [newWorkout, ...workouts];
     setWorkouts(next);
-    window.localStorage.setItem("lifted-workouts", JSON.stringify(next));
-    if (supabase && sessionUser) await supabase.from("workouts").insert({ user_id: sessionUser.id, name: newWorkout.name, workout_date: newWorkout.date, volume: newWorkout.volume, logged_exercises: newWorkout.loggedExercises });
+    if (!supabase) window.localStorage.setItem("lifted-workouts", JSON.stringify(next));
     setShowWorkout(false);
     setActive("History");
   }
@@ -223,6 +262,7 @@ export default function Home() {
             </div>
           </header>
 
+          {cloudError && <div role="alert" className="mb-4 flex items-center justify-between rounded-xl border border-[#e7c9a4] bg-[#fff8ed] px-4 py-3 text-sm text-[#8a5a21]"><span>{cloudError}</span><button onClick={() => setCloudError("")} aria-label="Dismiss error"><X size={16} /></button></div>}
           {active === "Overview" && <div className="fade-in">
             <div className="mb-10 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
               <div><p className="mb-2 text-sm font-medium text-[#75a889]">Saturday, October 19</p><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Good morning, {user}.</h1><p className="mt-2 text-[var(--muted)]">Ready to make today count?</p></div>
@@ -251,9 +291,9 @@ export default function Home() {
 
       <nav className="fixed bottom-0 left-0 right-0 z-20 flex justify-around border-t border-[var(--line)] bg-[#fbfcf9]/95 px-2 py-2 backdrop-blur lg:hidden">{navItems.map(({ label, icon: Icon }) => <button key={label} onClick={() => setActive(label)} className={`flex flex-col items-center gap-1 px-3 py-1 text-[10px] font-medium ${active === label ? "text-[var(--ink)]" : "text-[var(--muted)]"}`}><Icon size={19} /><span>{label}</span></button>)}</nav>
 
-      {showWorkout && <div className="fixed inset-0 z-30 flex items-end justify-center bg-[rgba(23,33,27,.3)] p-0 sm:items-center sm:p-5"><div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-[#fbfcf9] p-5 sm:rounded-3xl sm:p-7"><div className="mb-6 flex items-start justify-between"><div><p className="text-sm font-semibold text-[#75a889]">New session</p><h2 className="mt-1 text-2xl font-bold">Log your workout</h2></div><button onClick={() => setShowWorkout(false)} className="rounded-full p-2 hover:bg-white"><X size={20} /></button></div><div className="space-y-4">{selectedExercises.map((exercise) => <div key={exercise.id} className="rounded-2xl border border-[var(--line)] bg-white p-4"><div className="mb-4 flex items-center justify-between"><div><p className="font-semibold">{exercise.name}</p><p className="mt-1 text-xs text-[var(--muted)]">{exercise.muscle} · {exercise.equipment}</p></div><Timer size={17} className="text-[#75a889]" /></div>{(sets[exercise.id] || []).map((set, index) => <div key={index} className="mb-2 grid grid-cols-[32px_1fr_1fr_40px] items-center gap-2"><span className="text-center text-xs text-[var(--muted)]">{index + 1}</span><input value={set.weight} onChange={(event) => setSets((current) => ({ ...current, [exercise.id]: current[exercise.id].map((item, i) => i === index ? { ...item, weight: event.target.value } : item) }))} placeholder="kg" className="w-full rounded-lg border border-[var(--line)] bg-[#fbfcf9] px-3 py-2 text-sm outline-none focus:border-[#75a889]" /><input value={set.reps} onChange={(event) => setSets((current) => ({ ...current, [exercise.id]: current[exercise.id].map((item, i) => i === index ? { ...item, reps: event.target.value } : item) }))} placeholder="reps" className="w-full rounded-lg border border-[var(--line)] bg-[#fbfcf9] px-3 py-2 text-sm outline-none focus:border-[#75a889]" /><button onClick={() => setSets((current) => ({ ...current, [exercise.id]: current[exercise.id].map((item, i) => i === index ? { ...item, done: !item.done } : item) }))} className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm ${set.done ? "border-[#75a889] bg-[var(--mint)] text-[#56856a]" : "border-[var(--line)] text-transparent"}`}>✓</button></div>)}<button onClick={() => setSets((current) => ({ ...current, [exercise.id]: [...current[exercise.id], { weight: "", reps: "", done: false }] }))} className="mt-1 text-xs font-semibold text-[#75a889]">+ Add set</button></div>)}</div><button onClick={() => setShowExercisePicker(true)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#b8c9bb] py-3 text-sm font-semibold text-[#56856a]"><Plus size={16} />Add exercise</button>      <div className="mt-7 flex flex-col gap-3 sm:flex-row"><button onClick={saveRoutine} className="flex-1 rounded-xl border border-[var(--line)] bg-white py-3 text-sm font-semibold">Save as routine</button><button onClick={saveWorkout} className="flex-1 rounded-xl bg-[var(--ink)] py-3 text-sm font-semibold text-white">Finish workout</button></div></div></div>}
+      {showWorkout && <div className="fixed inset-0 z-30 flex items-end justify-center bg-[rgba(23,33,27,.3)] p-0 sm:items-center sm:p-5"><div className="slide-up max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-t-3xl bg-[#fbfcf9] p-5 sm:rounded-3xl sm:p-7"><div className="mb-6 flex items-start justify-between"><div><p className="text-sm font-semibold text-[#75a889]">New session</p><h2 className="mt-1 text-2xl font-bold">Log your workout</h2></div><button onClick={() => setShowWorkout(false)} className="rounded-full p-2 hover:bg-white"><X size={20} /></button></div><div className="space-y-4">{selectedExercises.map((exercise) => <div key={exercise.id} className="rounded-2xl border border-[var(--line)] bg-white p-4"><div className="mb-4 flex items-center justify-between"><div><p className="font-semibold">{exercise.name}</p><p className="mt-1 text-xs text-[var(--muted)]">{exercise.muscle} · {exercise.equipment}</p></div><Timer size={17} className="text-[#75a889]" /></div>{(sets[exercise.id] || []).map((set, index) => <div key={index} className="mb-2 grid grid-cols-[32px_1fr_1fr_40px] items-center gap-2"><span className="text-center text-xs text-[var(--muted)]">{index + 1}</span><input value={set.weight} onChange={(event) => setSets((current) => ({ ...current, [exercise.id]: current[exercise.id].map((item, i) => i === index ? { ...item, weight: event.target.value } : item) }))} placeholder="kg" className="w-full rounded-lg border border-[var(--line)] bg-[#fbfcf9] px-3 py-2 text-sm outline-none focus:border-[#75a889]" /><input value={set.reps} onChange={(event) => setSets((current) => ({ ...current, [exercise.id]: current[exercise.id].map((item, i) => i === index ? { ...item, reps: event.target.value } : item) }))} placeholder="reps" className="w-full rounded-lg border border-[var(--line)] bg-[#fbfcf9] px-3 py-2 text-sm outline-none focus:border-[#75a889]" /><button onClick={() => setSets((current) => ({ ...current, [exercise.id]: current[exercise.id].map((item, i) => i === index ? { ...item, done: !item.done } : item) }))} className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm ${set.done ? "border-[#75a889] bg-[var(--mint)] text-[#56856a]" : "border-[var(--line)] text-transparent"}`}>✓</button></div>)}<button onClick={() => setSets((current) => ({ ...current, [exercise.id]: [...current[exercise.id], { weight: "", reps: "", done: false }] }))} className="mt-1 text-xs font-semibold text-[#75a889]">+ Add set</button></div>)}</div><button onClick={() => setShowExercisePicker(true)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[#b8c9bb] py-3 text-sm font-semibold text-[#56856a]"><Plus size={16} />Add exercise</button>      <div className="mt-7 flex flex-col gap-3 sm:flex-row"><button onClick={saveRoutine} className="flex-1 rounded-xl border border-[var(--line)] bg-white py-3 text-sm font-semibold">Save as routine</button><button onClick={saveWorkout} className="flex-1 rounded-xl bg-[var(--ink)] py-3 text-sm font-semibold text-white">Finish workout</button></div></div></div>}
 
-      {showExercisePicker && <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(23,33,27,.3)] p-5"><div className="w-full max-w-lg rounded-3xl bg-[#fbfcf9] p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="text-xl font-bold">Add exercises</h2><p className="mt-1 text-sm text-[var(--muted)]">Pick everything you want to train.</p></div><button onClick={() => setShowExercisePicker(false)}><X size={20} /></button></div><div className="mb-4 flex items-center gap-2 rounded-xl border border-[var(--line)] bg-white px-3 py-2.5"><Search size={17} className="text-[var(--muted)]" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search exercises" className="w-full bg-transparent text-sm outline-none" /></div><div className="max-h-64 space-y-1 overflow-y-auto">{filteredExercises.map((exercise) => <button key={exercise.id} onClick={() => toggleExercise(exercise)} className="flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-white"><span><span className="block text-sm font-semibold">{exercise.name}</span><span className="text-xs text-[var(--muted)]">{exercise.muscle} · {exercise.equipment}</span></span><span className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs ${selectedExercises.some((item) => item.id === exercise.id) ? "border-[#75a889] bg-[var(--mint)] text-[#56856a]" : "border-[var(--line)] text-transparent"}`}>✓</span></button>)}</div><button onClick={() => setShowExercisePicker(false)} className="mt-5 w-full rounded-xl bg-[var(--ink)] py-3 text-sm font-semibold text-white">Done</button></div></div>}
+      {showExercisePicker && <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(23,33,27,.3)] p-5"><div className="scale-in w-full max-w-lg rounded-3xl bg-[#fbfcf9] p-6"><div className="mb-5 flex items-center justify-between"><div><h2 className="text-xl font-bold">Add exercises</h2><p className="mt-1 text-sm text-[var(--muted)]">Pick everything you want to train.</p></div><button onClick={() => setShowExercisePicker(false)}><X size={20} /></button></div><div className="mb-4 flex items-center gap-2 rounded-xl border border-[var(--line)] bg-white px-3 py-2.5"><Search size={17} className="text-[var(--muted)]" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search exercises" className="w-full bg-transparent text-sm outline-none" /></div><div className="max-h-64 space-y-1 overflow-y-auto">{filteredExercises.map((exercise) => <button key={exercise.id} onClick={() => toggleExercise(exercise)} className="flex w-full items-center justify-between rounded-xl p-3 text-left hover:bg-white"><span><span className="block text-sm font-semibold">{exercise.name}</span><span className="text-xs text-[var(--muted)]">{exercise.muscle} · {exercise.equipment}</span></span><span className={`flex h-6 w-6 items-center justify-center rounded-full border text-xs ${selectedExercises.some((item) => item.id === exercise.id) ? "border-[#75a889] bg-[var(--mint)] text-[#56856a]" : "border-[var(--line)] text-transparent"}`}>✓</span></button>)}</div><button onClick={() => setShowExercisePicker(false)} className="mt-5 w-full rounded-xl bg-[var(--ink)] py-3 text-sm font-semibold text-white">Done</button></div></div>}
     </main>
   );
 }

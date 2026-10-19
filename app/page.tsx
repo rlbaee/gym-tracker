@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Apple,
   BarChart3,
   ChevronRight,
   Dumbbell,
@@ -19,7 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.3.6";
+const APP_VERSION = "0.3.7";
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -31,6 +30,29 @@ function SpotifyIcon({ size = 16 }: { size?: number }) {
       fill="currentColor"
     >
       <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm4.59 14.3a.75.75 0 0 1-1.03.25c-2.83-1.73-6.39-2.12-10.58-1.16a.75.75 0 1 1-.34-1.46c4.59-1.05 8.52-.6 11.7 1.34.35.21.46.67.25 1.03Zm1.38-3.06a.94.94 0 0 1-1.29.31c-3.24-1.99-8.18-2.57-12.01-1.41a.94.94 0 1 1-.55-1.79c4.38-1.33 9.83-.68 13.55 1.6.44.27.58.85.3 1.29Zm.12-3.2C14.2 7.9 8.03 7.69 4.44 8.78a1.13 1.13 0 1 1-.66-2.16c4.12-1.25 10.98-1 14.87 1.3a1.13 1.13 0 0 1-.56 2.12Z" />
+    </svg>
+  );
+}
+
+function AppleMusicIcon({ size = 17 }: { size?: number }) {
+  return (
+    <svg
+      aria-hidden="true"
+      height={size}
+      viewBox="0 0 24 24"
+      width={size}
+    >
+      <defs>
+        <linearGradient id="apple-music-gradient" x1="0" x2="1" y1="1" y2="0">
+          <stop offset="0" stopColor="#fa315d" />
+          <stop offset="1" stopColor="#fa8a9f" />
+        </linearGradient>
+      </defs>
+      <rect width="24" height="24" rx="6" fill="url(#apple-music-gradient)" />
+      <path
+        d="M15.8 6.7v8.05a2.7 2.7 0 1 1-1.2-2.23V8.8l5.05-1.18v5.98a2.7 2.7 0 1 1-1.2-2.23V6.08l-2.65.62Z"
+        fill="white"
+      />
     </svg>
   );
 }
@@ -1071,7 +1093,7 @@ export default function Home() {
                     title="Apple Music"
                     className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f5e5ed] text-[#9a3f6a] hover:bg-[#eed7e3]"
                   >
-                    <Apple size={17} />
+                    <AppleMusicIcon />
                   </button>
                 </div>
               </div>
@@ -1525,7 +1547,7 @@ export default function Home() {
                 title="Apple Music"
                 className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f5e5ed] text-[#9a3f6a] hover:bg-[#eed7e3]"
               >
-                <Apple size={17} />
+                <AppleMusicIcon />
               </button>
             </div>
             <div className="space-y-4">

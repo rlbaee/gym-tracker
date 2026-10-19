@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.1.2";
+const APP_VERSION = "0.2.0";
 
 type Exercise = { id: string; name: string; muscle: string; equipment: string };
 type SetRow = { weight: string; reps: string; done: boolean };

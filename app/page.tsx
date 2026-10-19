@@ -291,24 +291,26 @@ export default function Home() {
     { label: "Progress", icon: TrendingUp },
   ];
 
-  const workoutsThisWeek = workouts.filter((workout) => {
-    const date = new Date(`${workout.date}T00:00:00`);
-    const now = new Date();
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - now.getDay());
-    weekStart.setHours(0, 0, 0, 0);
-    return date >= weekStart && date <= now;
-  }).length;
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 5 ? "Good night" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const todayLabel = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(now);
-  const workoutDates = new Set(workouts.map((workout) => workout.date));
+  const getWeekKey = (date: Date) => {
+    const weekStart = new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
+    return getLocalDateKey(weekStart);
+  };
+  const workoutWeeks = new Set(workouts.map((workout) => getWeekKey(new Date(`${workout.date}T00:00:00`))));
+  const firstWorkoutDate = workouts.length
+    ? new Date(`${workouts[workouts.length - 1].date}T00:00:00`)
+    : now;
+  const elapsedWeeks = Math.max(1, Math.floor((now.getTime() - firstWorkoutDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1);
+  const averageWorkoutsPerWeek = workouts.length / elapsedWeeks;
+  const averageVolumePerWeek = totalVolume / elapsedWeeks;
   let currentStreak = 0;
-  const streakDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  while (workoutDates.has(getLocalDateKey(streakDate))) {
+  const streakWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+  while (workoutWeeks.has(getLocalDateKey(streakWeek))) {
     currentStreak += 1;
-    streakDate.setDate(streakDate.getDate() - 1);
+    streakWeek.setDate(streakWeek.getDate() - 7);
   }
 
   if (!authReady) return <main className="grain flex min-h-screen items-center justify-center text-sm text-[var(--muted)]">Loading your account…</main>;
@@ -356,7 +358,7 @@ export default function Home() {
               <button onClick={openWorkout} className="flex w-fit items-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-white shadow-soft transition hover:-translate-y-0.5"><Plus size={17} />Start workout</button>
             </div>
             <div className="mb-8 grid gap-4 sm:grid-cols-3">
-              {[["This week", String(workoutsThisWeek), "workouts"], ["Total volume", `${(totalVolume / 1000).toFixed(1)}k`, "kg lifted"], ["Current streak", String(currentStreak), "days"]].map(([label, value, suffix], index) => (
+              {[["Avg. workouts / week", averageWorkoutsPerWeek.toFixed(1), "workouts"], ["Avg. volume / week", `${(averageVolumePerWeek / 1000).toFixed(1)}k`, "kg lifted"], ["Weekly streak", String(currentStreak), "weeks"]].map(([label, value, suffix], index) => (
                 <div key={label} className={`rounded-2xl border border-[var(--line)] p-5 ${index === 1 ? "bg-[var(--ink)] text-white" : "bg-white"}`}><div className="mb-5 flex items-center justify-between"><p className={`text-sm ${index === 1 ? "text-[#b1c9b7]" : "text-[var(--muted)]"}`}>{label}</p>{index === 0 ? <Dumbbell size={17} /> : index === 1 ? <BarChart3 size={17} /> : <Trophy size={17} />}</div><p className="text-3xl font-bold">{value}<span className={`ml-1 text-sm font-normal ${index === 1 ? "text-[#b1c9b7]" : "text-[var(--muted)]"}`}>{suffix}</span></p></div>
               ))}
             </div>

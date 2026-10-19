@@ -58,6 +58,7 @@ export default function Home() {
   const [authMessage, setAuthMessage] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [cloudError, setCloudError] = useState("");
+  const [cloudLoadError, setCloudLoadError] = useState("");
   const cloudRequest = useRef(0);
 
   useEffect(() => {
@@ -103,16 +104,19 @@ export default function Home() {
     if (!supabase) return;
     const requestId = ++cloudRequest.current;
     setAuthReady(false);
-    setCloudError("");
-    const [{ data: cloudWorkouts }, { data: cloudRoutines }] = await Promise.all([
+    setCloudLoadError("");
+    const [{ data: cloudWorkouts, error: workoutsError }, { data: cloudRoutines, error: routinesError }] = await Promise.all([
       supabase.from("workouts").select("*").eq("user_id", userId).order("workout_date", { ascending: false }),
       supabase.from("routines").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
     ]);
     if (requestId !== cloudRequest.current) return;
-    if (cloudWorkouts === null || cloudRoutines === null) {
+    const loadError = workoutsError || routinesError;
+    if (loadError || !cloudWorkouts || !cloudRoutines) {
       setWorkouts([]);
       setRoutines([]);
-      setCloudError("We could not load your synced data. Please refresh and try again.");
+      setCloudLoadError(loadError?.code === "42P01"
+        ? "Your Supabase tables are not set up yet. Run supabase/schema.sql in the Supabase SQL Editor."
+        : "Cloud sync is temporarily unavailable. Your account is still safe; try again from Settings.");
     } else {
       setWorkouts(cloudWorkouts.map((item) => ({ id: item.id, name: item.name, date: item.workout_date, exercises: item.logged_exercises.length, volume: Number(item.volume), loggedExercises: item.logged_exercises })));
       setRoutines(cloudRoutines.map((item) => ({ id: item.id, name: item.name, exerciseIds: item.exercise_ids })));
@@ -150,6 +154,7 @@ export default function Home() {
     setWorkouts([]);
     setRoutines([]);
     setCloudError("");
+    setCloudLoadError("");
     setUser("Guest");
     setAccountName("");
     window.localStorage.removeItem("lifted-workouts");
@@ -164,6 +169,10 @@ export default function Home() {
     if (error) setCloudError("We could not update your name. Please try again.");
     else setUser(nextName);
     setAccountNameBusy(false);
+  }
+
+  async function retryCloudSync() {
+    if (sessionUser) await loadCloudData(sessionUser.id);
   }
 
   const totalVolume = useMemo(() => workouts.reduce((sum, workout) => sum + workout.volume, 0), [workouts]);
@@ -312,7 +321,7 @@ export default function Home() {
 
           {active === "Workouts" && <div className="fade-in"><div className="mb-8 flex items-end justify-between"><div><h1 className="text-3xl font-bold tracking-tight">Workouts</h1><p className="mt-2 text-[var(--muted)]">Build your next session.</p></div><button onClick={openWorkout} className="flex items-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-white"><Plus size={17} />New workout</button></div><div className="rounded-2xl border border-dashed border-[#b8c9bb] bg-[#eef7ef] p-10 text-center"><Dumbbell className="mx-auto mb-4 text-[#75a889]" size={28} /><h2 className="font-bold">Start with a blank workout</h2><p className="mx-auto mt-2 max-w-sm text-sm text-[var(--muted)]">Choose your exercises, add your sets, and keep building momentum.</p><button onClick={openWorkout} className="mt-5 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold shadow-sm">Create workout</button></div></div>}
 
-          {active === "Settings" && <div className="fade-in"><div className="mb-8"><h1 className="text-3xl font-bold tracking-tight">Settings</h1><p className="mt-2 text-[var(--muted)]">Manage your Lifted account.</p></div><div className="max-w-2xl space-y-4"><section className="rounded-2xl border border-[var(--line)] bg-white p-6"><div className="mb-5 flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#d2e8d9] text-lg font-bold">{user.charAt(0).toUpperCase()}</div><div><h2 className="font-bold">Profile</h2><p className="text-sm text-[var(--muted)]">This name appears in your dashboard.</p></div></div><label className="block text-sm font-semibold">Display name<input value={accountName} onChange={(event) => setAccountName(event.target.value)} className="mt-2 w-full rounded-xl border border-[var(--line)] bg-[#fbfcf9] px-4 py-3 text-sm font-normal outline-none focus:border-[#75a889]" /></label><button onClick={saveAccountName} disabled={accountNameBusy || !accountName.trim() || accountName.trim() === user} className="mt-4 rounded-xl bg-[var(--ink)] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{accountNameBusy ? "Saving…" : "Save changes"}</button></section><section className="rounded-2xl border border-[var(--line)] bg-white p-6"><h2 className="font-bold">Account</h2><div className="mt-4 space-y-3 text-sm"><div className="flex items-center justify-between gap-4"><span className="text-[var(--muted)]">Email</span><span className="font-medium">{sessionUser?.email || "Local demo account"}</span></div><div className="flex items-center justify-between gap-4"><span className="text-[var(--muted)]">Data sync</span><span className="font-medium text-[#56856a]">{supabase ? "Supabase cloud" : "This browser only"}</span></div></div><button onClick={signOut} className="mt-6 flex items-center gap-2 rounded-xl border border-[#e7c9c9] px-4 py-2.5 text-sm font-semibold text-[#a85454] hover:bg-[#fff5f5]"><LogOut size={16} />Sign out</button></section></div></div>}
+          {active === "Settings" && <div className="fade-in"><div className="mb-8"><h1 className="text-3xl font-bold tracking-tight">Settings</h1><p className="mt-2 text-[var(--muted)]">Manage your Lifted account.</p></div><div className="max-w-2xl space-y-4"><section className="rounded-2xl border border-[var(--line)] bg-white p-6"><div className="mb-5 flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#d2e8d9] text-lg font-bold">{user.charAt(0).toUpperCase()}</div><div><h2 className="font-bold">Profile</h2><p className="text-sm text-[var(--muted)]">This name appears in your dashboard.</p></div></div><label className="block text-sm font-semibold">Display name<input value={accountName} onChange={(event) => setAccountName(event.target.value)} className="mt-2 w-full rounded-xl border border-[var(--line)] bg-[#fbfcf9] px-4 py-3 text-sm font-normal outline-none focus:border-[#75a889]" /></label><button onClick={saveAccountName} disabled={accountNameBusy || !accountName.trim() || accountName.trim() === user} className="mt-4 rounded-xl bg-[var(--ink)] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{accountNameBusy ? "Saving…" : "Save changes"}</button></section><section className="rounded-2xl border border-[var(--line)] bg-white p-6"><h2 className="font-bold">Account</h2><div className="mt-4 space-y-3 text-sm"><div className="flex items-center justify-between gap-4"><span className="text-[var(--muted)]">Email</span><span className="font-medium">{sessionUser?.email || "Local demo account"}</span></div><div className="flex items-center justify-between gap-4"><span className="text-[var(--muted)]">Data sync</span><span className={`font-medium ${cloudLoadError ? "text-amber-700" : "text-[#56856a]"}`}>{cloudLoadError ? "Needs attention" : supabase ? "Supabase cloud" : "This browser only"}</span></div></div>{cloudLoadError && <div className="mt-5 rounded-xl bg-[#fff8ed] p-4 text-sm text-[#8a5a21]"><p>{cloudLoadError}</p><button onClick={retryCloudSync} className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-semibold">Retry sync</button></div>}<button onClick={signOut} className="mt-6 flex items-center gap-2 rounded-xl border border-[#e7c9c9] px-4 py-2.5 text-sm font-semibold text-[#a85454] hover:bg-[#fff5f5]"><LogOut size={16} />Sign out</button></section></div></div>}
 
           {active === "Routines" && <div className="fade-in"><div className="mb-8 flex items-end justify-between"><div><h1 className="text-3xl font-bold tracking-tight">Routines</h1><p className="mt-2 text-[var(--muted)]">Your go-to sessions, ready when you are.</p></div><button onClick={saveRoutine} className="flex items-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-white"><Plus size={17} />Save routine</button></div><div className="grid gap-4 sm:grid-cols-2">{routines.map((routine) => <div key={routine.id} className="rounded-2xl border border-[var(--line)] bg-white p-5"><div className="mb-8 flex items-start justify-between"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--mint)]"><Sparkles size={18} /></div><span className="text-xs text-[var(--muted)]">{routine.exerciseIds.length} exercises</span></div><h2 className="font-bold">{routine.name}</h2><p className="mt-1 text-sm text-[var(--muted)]">{routine.exerciseIds.map((id) => exercises.find((exercise) => exercise.id === id)?.name).join(" · ")}</p><button onClick={() => useRoutine(routine)} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink)] py-2.5 text-sm font-semibold text-white">Use routine <ChevronRight size={16} /></button></div>)}</div></div>}
         </section>

@@ -2,12 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  BarChart3, ChevronRight, CircleUserRound, Dumbbell, History, LogOut,
-  Menu, Plus, Search, Settings, Sparkles, Timer, TrendingUp, Trophy, X,
+  BarChart3, ChevronRight, Dumbbell, History, LogOut,
+  Plus, Search, Sparkles, Timer, TrendingUp, Trophy, X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.1.1";
+const APP_VERSION = "0.1.2";
 
 type Exercise = { id: string; name: string; muscle: string; equipment: string };
 type SetRow = { weight: string; reps: string; done: boolean };
@@ -63,6 +63,8 @@ export default function Home() {
   const [user, setUser] = useState("Guest");
   const [accountName, setAccountName] = useState("");
   const [accountNameBusy, setAccountNameBusy] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const [authReady, setAuthReady] = useState(!supabase);
   const [sessionUser, setSessionUser] = useState<{ id: string; email?: string } | null>(null);
   const [authMode, setAuthMode] = useState<"sign-in" | "sign-up">("sign-in");
@@ -93,6 +95,7 @@ export default function Home() {
         const displayName = metadata.full_name || metadata.name || metadata.user_name || nextUser.email?.split("@")[0] || "Athlete";
         setUser(displayName);
         setAccountName(displayName);
+        setAvatarUrl(metadata.avatar_url || metadata.picture || "");
         setSessionUser({ id: nextUser.id, email: nextUser.email });
         await loadCloudData(nextUser.id);
       };
@@ -180,6 +183,7 @@ export default function Home() {
     setCloudLoadError("");
     setUser("Guest");
     setAccountName("");
+    setAvatarUrl("");
     window.localStorage.removeItem("lifted-workouts");
     window.localStorage.removeItem("lifted-routines");
   }
@@ -193,6 +197,37 @@ export default function Home() {
     else setUser(nextName);
     setAccountNameBusy(false);
   }
+
+  async function changeProfilePicture(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) {
+      setCloudError("Choose an image smaller than 2 MB.");
+      return;
+    }
+    setAvatarBusy(true);
+    if (!supabase || !sessionUser) {
+      setAvatarUrl(URL.createObjectURL(file));
+      setAvatarBusy(false);
+      return;
+    }
+    const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    const path = `${sessionUser.id}/avatar.${extension}`;
+    const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true, contentType: file.type });
+    if (uploadError) {
+      setCloudError("Profile pictures are not configured yet. Run the latest Supabase schema, then try again.");
+    } else {
+      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+      const publicUrl = `${data.publicUrl}?v=${Date.now()}`;
+      const { error: profileError } = await supabase.auth.updateUser({ data: { avatar_url: publicUrl } });
+      if (profileError) setCloudError("Your picture uploaded, but the profile could not be updated.");
+      else setAvatarUrl(publicUrl);
+    }
+    setAvatarBusy(false);
+  }
+
+  const profileAvatar = avatarUrl
+    ? <img src={avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
+    : <span>{user.charAt(0).toUpperCase()}</span>;
 
   async function retryCloudSync() {
     if (sessionUser) await loadCloudData(sessionUser.id);
@@ -332,22 +367,20 @@ export default function Home() {
             ))}
           </nav>
           <div className="mt-auto space-y-1">
-            <button onClick={() => setActive("Settings")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${active === "Settings" ? "bg-[var(--mint)] text-[var(--ink)]" : "text-[var(--muted)] hover:bg-[#f0f4ef]"}`}><Settings size={17} />Settings</button>
             <button onClick={signOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[var(--muted)] hover:bg-[#f0f4ef]"><LogOut size={17} />Sign out</button>
-            <div className="mt-4 flex items-center gap-3 border-t border-[var(--line)] pt-5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#d2e8d9] text-sm font-bold">{user.charAt(0).toUpperCase()}</div>
+            <button onClick={() => setActive("Settings")} className="mt-4 flex w-full items-center gap-3 border-t border-[var(--line)] pt-5 text-left">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#d2e8d9] text-sm font-bold">{profileAvatar}</div>
               <div><p className="text-sm font-semibold">{user}</p><p className="text-xs text-[var(--muted)]">Free account</p></div>
-            </div>
+            </button>
           </div>
         </aside>
 
         <section className="min-w-0 flex-1 px-5 pb-24 sm:px-8 lg:px-14 lg:pb-10">
           <header className="flex items-center justify-between py-6">
-            <button className="flex items-center gap-2 lg:hidden"><Menu size={20} /><span className="font-bold">lifted<span className="text-[#83b798]">.</span></span></button>
+            <button onClick={() => setActive("Overview")} className="flex items-center gap-2 lg:hidden"><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--ink)] text-white"><Dumbbell size={16} /></span><span className="font-bold">lifted<span className="text-[#83b798]">.</span></span></button>
             <p className="hidden text-sm text-[var(--muted)] lg:block">{active}</p>
             <div className="flex items-center gap-3">
-              <button className="rounded-full p-2 text-[var(--muted)] hover:bg-white"><CircleUserRound size={20} /></button>
-              <div className="h-8 w-8 rounded-full bg-[#d2e8d9] text-center text-sm font-bold leading-8 lg:hidden">A</div>
+              <button onClick={() => setActive("Settings")} aria-label="Open account settings" className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-[#d2e8d9] text-sm font-bold text-[var(--ink)]">{profileAvatar}</button>
             </div>
           </header>
 
@@ -372,7 +405,7 @@ export default function Home() {
 
           {active === "Progress" && <div className="fade-in"><div className="mb-8"><h1 className="text-3xl font-bold tracking-tight">Your progress</h1><p className="mt-2 text-[var(--muted)]">See how your working weight is moving over time.</p></div><div className="mb-5 flex flex-wrap gap-2">{allExercises.map((exercise) => <button key={exercise.id} onClick={() => setProgressExercise(exercise.id)} className={`rounded-full px-3 py-2 text-xs font-semibold ${progressExercise === exercise.id ? "bg-[var(--ink)] text-white" : "border border-[var(--line)] bg-white text-[var(--muted)]"}`}>{exercise.name}</button>)}</div>{(() => { const points = workouts.flatMap((workout) => workout.loggedExercises.filter((logged) => logged.exerciseId === progressExercise).map((logged) => ({ date: workout.date, weight: Math.max(...logged.sets.map((set) => set.weight), 0) }))).reverse(); const max = Math.max(...points.map((point) => point.weight), 1); const first = points[0]?.weight || 0; const latest = points.at(-1)?.weight || 0; const change = latest - first; return <div className="rounded-2xl border border-[var(--line)] bg-white p-6"><div className="mb-8 flex items-center justify-between"><div><h2 className="font-bold">Working weight</h2><p className="mt-1 text-sm text-[var(--muted)]">Your heaviest logged set for each session</p></div><TrendingUp className="text-[#75a889]" /></div>{points.length > 0 ? <><div className="flex h-56 items-end gap-3 border-b border-[var(--line)] px-2">{points.map((point, index) => <div key={`${point.date}-${index}`} className="group flex h-full flex-1 flex-col items-center justify-end gap-2"><div className="relative w-full max-w-16 rounded-t-lg bg-[#a8d5ba] transition hover:bg-[#75a889]" style={{ height: `${Math.max((point.weight / max) * 88, 8)}%` }}><span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-semibold opacity-0 transition group-hover:opacity-100">{point.weight}kg</span></div><span className="text-[10px] text-[var(--muted)]">{point.date.slice(5)}</span></div>)}</div><div className={`mt-5 flex items-center gap-2 text-sm ${change >= 0 ? "text-[#56856a]" : "text-amber-700"}`}><TrendingUp size={15} />{change >= 0 ? `${change} kg improvement` : `${Math.abs(change)} kg down`} since first logged session</div></> : <div className="rounded-xl bg-[#f5f8f4] p-8 text-center text-sm text-[var(--muted)]">Log this exercise in a workout to start seeing your progress.</div>}</div> })()}</div>}
 
-          {active === "Settings" && <div className="fade-in"><div className="mb-8"><h1 className="text-3xl font-bold tracking-tight">Settings</h1><p className="mt-2 text-[var(--muted)]">Manage your Lifted account.</p></div><div className="max-w-2xl space-y-4"><section className="rounded-2xl border border-[var(--line)] bg-white p-6"><div className="mb-5 flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#d2e8d9] text-lg font-bold">{user.charAt(0).toUpperCase()}</div><div><h2 className="font-bold">Profile</h2><p className="text-sm text-[var(--muted)]">This name appears in your dashboard.</p></div></div><label className="block text-sm font-semibold">Display name<input value={accountName} onChange={(event) => setAccountName(event.target.value)} className="mt-2 w-full rounded-xl border border-[var(--line)] bg-[#fbfcf9] px-4 py-3 text-sm font-normal outline-none focus:border-[#75a889]" /></label><button onClick={saveAccountName} disabled={accountNameBusy || !accountName.trim() || accountName.trim() === user} className="mt-4 rounded-xl bg-[var(--ink)] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{accountNameBusy ? "Saving…" : "Save changes"}</button></section><section className="rounded-2xl border border-[var(--line)] bg-white p-6"><h2 className="font-bold">Account</h2><div className="mt-4 space-y-3 text-sm"><div className="flex items-center justify-between gap-4"><span className="text-[var(--muted)]">Email</span><span className="font-medium">{sessionUser?.email || "Local demo account"}</span></div><div className="flex items-center justify-between gap-4"><span className="text-[var(--muted)]">Data sync</span><span className={`font-medium ${cloudLoadError ? "text-amber-700" : "text-[#56856a]"}`}>{cloudLoadError ? "Needs attention" : supabase ? "Supabase cloud" : "This browser only"}</span></div></div>{cloudLoadError && <div className="mt-5 rounded-xl bg-[#fff8ed] p-4 text-sm text-[#8a5a21]"><p>{cloudLoadError}</p><button onClick={retryCloudSync} className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-semibold">Retry sync</button></div>}<button onClick={signOut} className="mt-6 flex items-center gap-2 rounded-xl border border-[#e7c9c9] px-4 py-2.5 text-sm font-semibold text-[#a85454] hover:bg-[#fff5f5]"><LogOut size={16} />Sign out</button></section></div></div>}
+          {active === "Settings" && <div className="fade-in"><div className="mb-8"><h1 className="text-3xl font-bold tracking-tight">Account settings</h1><p className="mt-2 text-[var(--muted)]">Manage your profile and account.</p></div><div className="max-w-2xl space-y-4"><section className="rounded-2xl border border-[var(--line)] bg-white p-6"><div className="mb-5 flex items-center gap-3"><label className="relative flex h-14 w-14 cursor-pointer items-center justify-center overflow-hidden rounded-full bg-[#d2e8d9] text-lg font-bold">{profileAvatar}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={changeProfilePicture} className="sr-only" />{avatarBusy && <span className="absolute inset-0 flex items-center justify-center bg-[rgba(23,33,27,.6)] text-xs text-white">...</span>}</label><div><h2 className="font-bold">Profile</h2><p className="text-sm text-[var(--muted)]">Click your picture to change it.</p></div></div><label className="block text-sm font-semibold">Display name<input value={accountName} onChange={(event) => setAccountName(event.target.value)} className="mt-2 w-full rounded-xl border border-[var(--line)] bg-[#fbfcf9] px-4 py-3 text-sm font-normal outline-none focus:border-[#75a889]" /></label><button onClick={saveAccountName} disabled={accountNameBusy || !accountName.trim() || accountName.trim() === user} className="mt-4 rounded-xl bg-[var(--ink)] px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{accountNameBusy ? "Saving…" : "Save changes"}</button></section><section className="rounded-2xl border border-[var(--line)] bg-white p-6"><h2 className="font-bold">Account</h2><div className="mt-4 space-y-3 text-sm"><div className="flex items-center justify-between gap-4"><span className="text-[var(--muted)]">Email</span><span className="font-medium">{sessionUser?.email || "Local demo account"}</span></div><div className="flex items-center justify-between gap-4"><span className="text-[var(--muted)]">Data sync</span><span className={`font-medium ${cloudLoadError ? "text-amber-700" : "text-[#56856a]"}`}>{cloudLoadError ? "Needs attention" : supabase ? "Supabase cloud" : "This browser only"}</span></div></div>{cloudLoadError && <div className="mt-5 rounded-xl bg-[#fff8ed] p-4 text-sm text-[#8a5a21]"><p>{cloudLoadError}</p><button onClick={retryCloudSync} className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-semibold">Retry sync</button></div>}<div className="mt-5 flex flex-wrap gap-4 text-sm"><a href="/privacy-policy" className="text-[#56856a] hover:underline">Privacy policy</a><a href="/terms-of-service" className="text-[#56856a] hover:underline">Terms of service</a></div><button onClick={signOut} className="mt-6 flex items-center gap-2 rounded-xl border border-[#e7c9c9] px-4 py-2.5 text-sm font-semibold text-[#a85454] hover:bg-[#fff5f5]"><LogOut size={16} />Sign out</button></section></div></div>}
 
           {active === "Routines" && <div className="fade-in"><div className="mb-8 flex items-end justify-between"><div><h1 className="text-3xl font-bold tracking-tight">Routines</h1><p className="mt-2 text-[var(--muted)]">Your go-to sessions, ready when you are.</p></div><button onClick={saveRoutine} className="flex items-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-white"><Plus size={17} />Save routine</button></div><div className="grid gap-4 sm:grid-cols-2">{routines.map((routine) => <div key={routine.id} className="rounded-2xl border border-[var(--line)] bg-white p-5"><div className="mb-8 flex items-start justify-between"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--mint)]"><Sparkles size={18} /></div><span className="text-xs text-[var(--muted)]">{routine.exerciseIds.length} exercises</span></div><h2 className="font-bold">{routine.name}</h2><p className="mt-1 text-sm text-[var(--muted)]">{routine.exerciseIds.map((id) => allExercises.find((exercise) => exercise.id === id)?.name).join(" · ")}</p><button onClick={() => useRoutine(routine)} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink)] py-2.5 text-sm font-semibold text-white">Use routine <ChevronRight size={16} /></button></div>)}</div></div>}
         </section>

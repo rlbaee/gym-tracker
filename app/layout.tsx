@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "Lifted — gym tracker",
   description: "A calm, simple place to keep your training moving.",
   manifest: "/manifest.json",
+  icons: { icon: "/icon.svg", apple: "/icon.svg" },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

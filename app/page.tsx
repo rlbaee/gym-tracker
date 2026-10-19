@@ -36,6 +36,13 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
+function getLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function Home() {
   const [active, setActive] = useState("Overview");
   const [showWorkout, setShowWorkout] = useState(false);
@@ -213,7 +220,7 @@ export default function Home() {
     const newWorkout: Workout = {
       id: String(Date.now()),
       name: "Quick workout",
-      date: new Date().toISOString().slice(0, 10),
+      date: getLocalDateKey(),
       exercises: selectedExercises.length,
       volume,
       loggedExercises: selectedExercises.map((exercise) => ({
@@ -258,7 +265,17 @@ export default function Home() {
     weekStart.setHours(0, 0, 0, 0);
     return date >= weekStart && date <= now;
   }).length;
-  const todayLabel = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" }).format(new Date());
+  const now = new Date();
+  const hour = now.getHours();
+  const greeting = hour < 5 ? "Good night" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const todayLabel = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(now);
+  const workoutDates = new Set(workouts.map((workout) => workout.date));
+  let currentStreak = 0;
+  const streakDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  while (workoutDates.has(getLocalDateKey(streakDate))) {
+    currentStreak += 1;
+    streakDate.setDate(streakDate.getDate() - 1);
+  }
 
   if (!authReady) return <main className="grain flex min-h-screen items-center justify-center text-sm text-[var(--muted)]">Loading your account…</main>;
   if (supabase && !sessionUser) return <main className="grain flex min-h-screen items-center justify-center p-5"><div className="w-full max-w-md rounded-3xl border border-[var(--line)] bg-white p-7 shadow-soft"><div className="mb-8 flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ink)] text-white"><Dumbbell size={19} /></div><span className="text-xl font-bold">lifted<span className="text-[#83b798]">.</span></span></div><h1 className="text-2xl font-bold">{authMode === "sign-in" ? "Welcome back." : "Create your account."}</h1><p className="mt-2 text-sm text-[var(--muted)]">Your workouts sync across every device.</p><form onSubmit={submitAuth} className="mt-7 space-y-3"><input required type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} placeholder="Email address" className="w-full rounded-xl border border-[var(--line)] bg-[#fbfcf9] px-4 py-3 text-sm outline-none focus:border-[#75a889]" /><input required minLength={6} type="password" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="Password (6+ characters)" className="w-full rounded-xl border border-[var(--line)] bg-[#fbfcf9] px-4 py-3 text-sm outline-none focus:border-[#75a889]" />{authError && <p className="text-sm text-red-600">{authError}</p>}{authMessage && <p className="text-sm text-[#56856a]">{authMessage}</p>}<button disabled={authBusy} className="w-full rounded-xl bg-[var(--ink)] py-3 text-sm font-semibold text-white disabled:opacity-60">{authBusy ? "Please wait…" : authMode === "sign-in" ? "Sign in" : "Create account"}</button></form><button onClick={signInWithGoogle} className="mt-3 w-full rounded-xl border border-[var(--line)] bg-white py-3 text-sm font-semibold">Continue with Google</button><button onClick={() => { setAuthMode(authMode === "sign-in" ? "sign-up" : "sign-in"); setAuthError(""); setAuthMessage(""); }} className="mt-5 w-full text-sm text-[var(--muted)]">{authMode === "sign-in" ? "New here? Create an account" : "Already have an account? Sign in"}</button></div></main>;
@@ -301,11 +318,11 @@ export default function Home() {
           {cloudError && <div role="alert" className="mb-4 flex items-center justify-between rounded-xl border border-[#e7c9a4] bg-[#fff8ed] px-4 py-3 text-sm text-[#8a5a21]"><span>{cloudError}</span><button onClick={() => setCloudError("")} aria-label="Dismiss error"><X size={16} /></button></div>}
           {active === "Overview" && <div className="fade-in">
             <div className="mb-10 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-              <div><p className="mb-2 text-sm font-medium text-[#75a889]">{todayLabel}</p><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Good morning, {user}.</h1><p className="mt-2 text-[var(--muted)]">Ready to make today count?</p></div>
+              <div><p className="mb-2 text-sm font-medium text-[#75a889]">{todayLabel}</p><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{greeting}, {user}.</h1><p className="mt-2 text-[var(--muted)]">Ready to make today count?</p></div>
               <button onClick={openWorkout} className="flex w-fit items-center gap-2 rounded-xl bg-[var(--ink)] px-4 py-3 text-sm font-semibold text-white shadow-soft transition hover:-translate-y-0.5"><Plus size={17} />Start workout</button>
             </div>
             <div className="mb-8 grid gap-4 sm:grid-cols-3">
-              {[["This week", String(workoutsThisWeek), "workouts"], ["Total volume", `${(totalVolume / 1000).toFixed(1)}k`, "kg lifted"], ["Current streak", workouts.length ? "1" : "0", "days"]].map(([label, value, suffix], index) => (
+              {[["This week", String(workoutsThisWeek), "workouts"], ["Total volume", `${(totalVolume / 1000).toFixed(1)}k`, "kg lifted"], ["Current streak", String(currentStreak), "days"]].map(([label, value, suffix], index) => (
                 <div key={label} className={`rounded-2xl border border-[var(--line)] p-5 ${index === 1 ? "bg-[var(--ink)] text-white" : "bg-white"}`}><div className="mb-5 flex items-center justify-between"><p className={`text-sm ${index === 1 ? "text-[#b1c9b7]" : "text-[var(--muted)]"}`}>{label}</p>{index === 0 ? <Dumbbell size={17} /> : index === 1 ? <BarChart3 size={17} /> : <Trophy size={17} />}</div><p className="text-3xl font-bold">{value}<span className={`ml-1 text-sm font-normal ${index === 1 ? "text-[#b1c9b7]" : "text-[var(--muted)]"}`}>{suffix}</span></p></div>
               ))}
             </div>

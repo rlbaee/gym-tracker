@@ -12,13 +12,14 @@ import {
   Search,
   Sparkles,
   Timer,
+  Trash2,
   TrendingUp,
   Trophy,
   X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.4.5";
+const APP_VERSION = "0.4.6";
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -818,6 +819,28 @@ export default function Home() {
     setSelectedWorkout(null);
   }
 
+  async function deleteRoutine(routine: Routine) {
+    if (!window.confirm(`Delete "${routine.name}"? This cannot be undone.`)) {
+      return;
+    }
+    if (supabase && sessionUser) {
+      const { error } = await supabase
+        .from("routines")
+        .delete()
+        .eq("id", routine.id)
+        .eq("user_id", sessionUser.id);
+      if (error) {
+        setCloudError("We could not delete that routine. Please try again.");
+        return;
+      }
+    }
+    const next = routines.filter((item) => item.id !== routine.id);
+    setRoutines(next);
+    if (!supabase) {
+      window.localStorage.setItem("lifted-routines", JSON.stringify(next));
+    }
+  }
+
   function toggleExercise(exercise: Exercise) {
     const alreadySelected = selectedExercises.some((item) => item.id === exercise.id);
     setSelectedExercises((current) =>
@@ -1263,8 +1286,19 @@ export default function Home() {
                   <div
                     key={workout.id}
                     onClick={() => setSelectedWorkout(workout)}
-                    className="cursor-pointer rounded-2xl border border-[var(--line)] bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-soft"
+                    className="relative cursor-pointer rounded-2xl border border-[var(--line)] bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-soft"
                   >
+                    <button
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void deleteWorkout(workout);
+                      }}
+                      aria-label={`Delete ${workout.name}`}
+                      title="Delete workout"
+                      className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-[#a85454] hover:bg-[#fff1f1]"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--mint)]">
@@ -1539,8 +1573,16 @@ export default function Home() {
                 {routines.map((routine) => (
                   <div
                     key={routine.id}
-                    className="rounded-2xl border border-[var(--line)] bg-white p-5"
+                    className="relative rounded-2xl border border-[var(--line)] bg-white p-5"
                   >
+                    <button
+                      onClick={() => void deleteRoutine(routine)}
+                      aria-label={`Delete ${routine.name}`}
+                      title="Delete routine"
+                      className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-lg text-[#a85454] hover:bg-[#fff1f1]"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                     <div className="mb-8 flex items-start justify-between">
                       <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[var(--mint)]">
                         <Sparkles size={18} />

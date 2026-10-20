@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.4.4";
+const APP_VERSION = "0.4.5";
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -178,6 +178,8 @@ export default function Home() {
   const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
   const [editingWorkoutDate, setEditingWorkoutDate] = useState("");
   const [editingWorkoutName, setEditingWorkoutName] = useState("Quick workout");
+  const [routineName, setRoutineName] = useState("My routine");
+  const [routineSavedMessage, setRoutineSavedMessage] = useState("");
   const [customExerciseName, setCustomExerciseName] = useState("");
   const [customExerciseMuscle, setCustomExerciseMuscle] = useState("Other");
   const [customExerciseEquipment, setCustomExerciseEquipment] =
@@ -565,6 +567,8 @@ export default function Home() {
     setEditingWorkoutId(null);
     setEditingWorkoutDate(getLocalDateKey());
     setEditingWorkoutName("Quick workout");
+    setRoutineName("My routine");
+    setRoutineSavedMessage("");
     setSelectedExercises(exerciseList);
     setSets(
       Object.fromEntries(
@@ -684,8 +688,16 @@ export default function Home() {
   }
 
   async function saveRoutine() {
-    const name = window.prompt("Name this routine", "My routine")?.trim();
-    if (!name || selectedExercises.length === 0) return;
+    const name = routineName.trim();
+    setRoutineSavedMessage("");
+    if (!name) {
+      setRoutineSavedMessage("Give your routine a name first.");
+      return;
+    }
+    if (selectedExercises.length === 0) {
+      setRoutineSavedMessage("Add at least one exercise first.");
+      return;
+    }
     if (supabase && sessionUser) {
       const { error } = await supabase
         .from("routines")
@@ -695,7 +707,9 @@ export default function Home() {
           exercise_ids: selectedExercises.map((exercise) => exercise.id),
         });
       if (error) {
-        setCloudError("We could not save that routine. Please try again.");
+        setRoutineSavedMessage(
+          "We could not save that routine. Please try again.",
+        );
         return;
       }
     }
@@ -710,6 +724,7 @@ export default function Home() {
     setRoutines(next);
     if (!supabase)
       window.localStorage.setItem("lifted-routines", JSON.stringify(next));
+    setRoutineSavedMessage(`“${name}” saved to your routines.`);
   }
 
   async function saveWorkout() {
@@ -1770,6 +1785,21 @@ export default function Home() {
               <Plus size={16} />
               Add exercise
             </button>{" "}
+            <div className="mt-5">
+              <label
+                htmlFor="routine-name"
+                className="mb-1.5 block text-xs font-semibold text-[var(--muted)]"
+              >
+                Routine name
+              </label>
+              <input
+                id="routine-name"
+                value={routineName}
+                onChange={(event) => setRoutineName(event.target.value)}
+                placeholder="My routine"
+                className="w-full rounded-xl border border-[var(--line)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#75a889]"
+              />
+            </div>
             <div className="mt-7 flex flex-col gap-3 sm:flex-row">
               <button
                 onClick={saveRoutine}
@@ -1784,6 +1814,11 @@ export default function Home() {
                 {editingWorkoutId ? "Save changes" : "Finish workout"}
               </button>
             </div>
+            {routineSavedMessage && (
+              <p className="mt-3 text-center text-sm text-[#56856a]">
+                {routineSavedMessage}
+              </p>
+            )}
           </div>
         </div>
       )}

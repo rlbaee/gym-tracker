@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.4.3";
+const APP_VERSION = "0.4.4";
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -1167,7 +1167,10 @@ export default function Home() {
                 </div>
               </div>
               <div className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-                <div className="rounded-2xl border border-[var(--line)] bg-white p-5 sm:p-6">
+                <div
+                  onClick={() => setActive("History")}
+                  className="cursor-pointer rounded-2xl border border-[var(--line)] bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-soft sm:p-6"
+                >
                   <div className="mb-6 flex items-center justify-between">
                     <div>
                       <h2 className="font-bold">Recent workouts</h2>

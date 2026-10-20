@@ -19,8 +19,16 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.4.7";
+const APP_VERSION = "0.4.8";
 const RELEASE_NOTES = [
+  {
+    title: "Offline workout safety",
+    description: "Active workout details are saved on this device as you go and restored if you leave the app.",
+  },
+  {
+    title: "Connection status",
+    description: "A small Offline indicator appears when your device loses its connection.",
+  },
   {
     title: "Quick delete",
     description: "Delete workouts and routines directly from their cards.",
@@ -186,6 +194,7 @@ export default function Home() {
   const [active, setActive] = useState("Overview");
   const [showWorkout, setShowWorkout] = useState(false);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
   const [workoutStartedAt, setWorkoutStartedAt] = useState<number | null>(null);
   const [workoutElapsed, setWorkoutElapsed] = useState(0);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
@@ -234,6 +243,21 @@ export default function Home() {
   const [cloudError, setCloudError] = useState("");
   const [cloudLoadError, setCloudLoadError] = useState("");
   const cloudRequest = useRef(0);
+  const draftHydrated = useRef(false);
+
+  const workoutDraftKey = `lifted-active-workout:${sessionUser?.id || "local"}`;
+
+  useEffect(() => {
+    setIsOnline(window.navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     if (!authReady) return;
@@ -242,6 +266,57 @@ export default function Home() {
       setShowWhatsNew(true);
     }
   }, [authReady]);
+
+  useEffect(() => {
+    if (!authReady || draftHydrated.current) return;
+    const savedDraft = window.localStorage.getItem(workoutDraftKey);
+    draftHydrated.current = true;
+    if (!savedDraft) return;
+    try {
+      const draft = JSON.parse(savedDraft) as {
+        selectedExercises?: Exercise[];
+        sets?: Record<string, SetRow[]>;
+        editingWorkoutId?: string | null;
+        editingWorkoutDate?: string;
+        editingWorkoutName?: string;
+        workoutStartedAt?: number | null;
+      };
+      if (!draft.selectedExercises?.length || !draft.sets) return;
+      setSelectedExercises(draft.selectedExercises);
+      setSets(draft.sets);
+      setEditingWorkoutId(draft.editingWorkoutId || null);
+      setEditingWorkoutDate(draft.editingWorkoutDate || getLocalDateKey());
+      setEditingWorkoutName(draft.editingWorkoutName || "Quick workout");
+      setWorkoutStartedAt(draft.workoutStartedAt || Date.now());
+      setShowWorkout(true);
+    } catch {
+      window.localStorage.removeItem(workoutDraftKey);
+    }
+  }, [authReady, workoutDraftKey]);
+
+  useEffect(() => {
+    if (!showWorkout || !draftHydrated.current) return;
+    window.localStorage.setItem(
+      workoutDraftKey,
+      JSON.stringify({
+        selectedExercises,
+        sets,
+        editingWorkoutId,
+        editingWorkoutDate,
+        editingWorkoutName,
+        workoutStartedAt,
+      }),
+    );
+  }, [
+    showWorkout,
+    selectedExercises,
+    sets,
+    editingWorkoutId,
+    editingWorkoutDate,
+    editingWorkoutName,
+    workoutStartedAt,
+    workoutDraftKey,
+  ]);
 
   useEffect(() => {
     if (!showWorkout || workoutStartedAt === null) return;
@@ -817,6 +892,7 @@ export default function Home() {
     setWorkouts(next);
     if (!supabase)
       window.localStorage.setItem("lifted-workouts", JSON.stringify(next));
+    window.localStorage.removeItem(workoutDraftKey);
     setShowWorkout(false);
     setWorkoutStartedAt(null);
     setWorkoutElapsed(0);
@@ -1105,6 +1181,11 @@ export default function Home() {
               {active}
             </p>
             <div className="flex items-center gap-3">
+              {!isOnline && (
+                <span className="rounded-full bg-[#fff3df] px-2.5 py-1 text-xs font-semibold text-[#8a5a21]">
+                  Offline
+                </span>
+              )}
               <button
                 onClick={() => setActive("Settings")}
                 aria-label="Open account settings"

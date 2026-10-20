@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.4.2";
+const APP_VERSION = "0.4.3";
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -778,6 +778,29 @@ export default function Home() {
     setWorkoutElapsed(0);
     setEditingWorkoutId(null);
     setActive("History");
+  }
+
+  async function deleteWorkout(workout: Workout) {
+    if (!window.confirm(`Delete "${workout.name}"? This cannot be undone.`)) {
+      return;
+    }
+    if (supabase && sessionUser) {
+      const { error } = await supabase
+        .from("workouts")
+        .delete()
+        .eq("id", workout.id)
+        .eq("user_id", sessionUser.id);
+      if (error) {
+        setCloudError("We could not delete that workout. Please try again.");
+        return;
+      }
+    }
+    const next = workouts.filter((item) => item.id !== workout.id);
+    setWorkouts(next);
+    if (!supabase) {
+      window.localStorage.setItem("lifted-workouts", JSON.stringify(next));
+    }
+    setSelectedWorkout(null);
   }
 
   function toggleExercise(exercise: Exercise) {
@@ -1911,6 +1934,12 @@ export default function Home() {
               className="mb-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--ink)] py-3 text-sm font-semibold text-white"
             >
               Edit workout
+            </button>
+            <button
+              onClick={() => void deleteWorkout(selectedWorkout)}
+              className="mb-6 flex w-full items-center justify-center gap-2 rounded-xl border border-[#e3bcbc] py-3 text-sm font-semibold text-[#a85454]"
+            >
+              Delete workout
             </button>
             {(() => {
               const muscleVolume = selectedWorkout.loggedExercises.reduce<Record<string, number>>((result, logged) => {

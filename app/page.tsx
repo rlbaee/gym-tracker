@@ -19,7 +19,21 @@ import {
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
-const APP_VERSION = "0.4.6";
+const APP_VERSION = "0.4.7";
+const RELEASE_NOTES = [
+  {
+    title: "Quick delete",
+    description: "Delete workouts and routines directly from their cards.",
+  },
+  {
+    title: "Workout history",
+    description: "Open the Recent workouts section to see older sessions.",
+  },
+  {
+    title: "Workout editing",
+    description: "Update saved workout details, exercises, dates, and sets.",
+  },
+];
 
 function SpotifyIcon({ size = 16 }: { size?: number }) {
   return (
@@ -171,6 +185,7 @@ function formatDuration(seconds: number) {
 export default function Home() {
   const [active, setActive] = useState("Overview");
   const [showWorkout, setShowWorkout] = useState(false);
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [workoutStartedAt, setWorkoutStartedAt] = useState<number | null>(null);
   const [workoutElapsed, setWorkoutElapsed] = useState(0);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
@@ -221,6 +236,14 @@ export default function Home() {
   const cloudRequest = useRef(0);
 
   useEffect(() => {
+    if (!authReady) return;
+    const seenVersion = window.localStorage.getItem("lifted-whats-new");
+    if (seenVersion !== APP_VERSION) {
+      setShowWhatsNew(true);
+    }
+  }, [authReady]);
+
+  useEffect(() => {
     if (!showWorkout || workoutStartedAt === null) return;
     const updateElapsed = () =>
       setWorkoutElapsed(Math.max(0, Math.floor((Date.now() - workoutStartedAt) / 1000)));
@@ -228,6 +251,11 @@ export default function Home() {
     const interval = window.setInterval(updateElapsed, 1000);
     return () => window.clearInterval(interval);
   }, [showWorkout, workoutStartedAt]);
+
+  function dismissWhatsNew() {
+    window.localStorage.setItem("lifted-whats-new", APP_VERSION);
+    setShowWhatsNew(false);
+  }
 
   useEffect(() => {
     if (supabase) {
@@ -1630,6 +1658,53 @@ export default function Home() {
       <span className="fixed bottom-3 right-4 z-10 hidden text-[10px] font-medium tracking-wide text-[#a1aaa3] lg:block">
         v{APP_VERSION}
       </span>
+
+      {showWhatsNew && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(23,33,27,.35)] p-5">
+          <div className="scale-in w-full max-w-md rounded-3xl bg-[#fbfcf9] p-6 shadow-soft sm:p-7">
+            <div className="mb-6 flex items-start justify-between">
+              <div>
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--mint)] text-[#56856a]">
+                  <Sparkles size={21} />
+                </div>
+                <p className="text-sm font-semibold text-[#75a889]">
+                  Lifted {APP_VERSION}
+                </p>
+                <h2 className="mt-1 text-2xl font-bold">What&apos;s new</h2>
+                <p className="mt-2 text-sm text-[var(--muted)]">
+                  A few improvements to make tracking feel easier.
+                </p>
+              </div>
+              <button
+                onClick={dismissWhatsNew}
+                aria-label="Close what's new"
+                className="rounded-full p-2 hover:bg-white"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="space-y-3">
+              {RELEASE_NOTES.map((note) => (
+                <div
+                  key={note.title}
+                  className="rounded-2xl border border-[var(--line)] bg-white p-4"
+                >
+                  <p className="font-semibold">{note.title}</p>
+                  <p className="mt-1 text-sm leading-relaxed text-[var(--muted)]">
+                    {note.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={dismissWhatsNew}
+              className="mt-6 w-full rounded-xl bg-[var(--ink)] py-3 text-sm font-semibold text-white"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
 
       {showWorkout && (
         <div className="fixed inset-0 z-30 flex items-end justify-center bg-[rgba(23,33,27,.3)] p-0 sm:items-center sm:p-5">
